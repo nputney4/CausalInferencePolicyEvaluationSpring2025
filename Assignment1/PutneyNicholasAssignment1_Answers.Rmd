@@ -1,0 +1,168 @@
+---
+title: "Causal Inference Policy Evaluation Assignment 1"
+output: html_document
+date: "2025-03-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Define packages that you need
+packages_vector <- c("tidyverse",    # package collection for data management 
+                      "dplyr",       # set of functions to work with data 
+                      "foreign",     # loading data (e.g. data from old Stata versions)
+                      "haven",       # loading data (e.g. data from newer Stata versions)
+                      "knitr",       # integrates computing and reporting
+                      "fastDummies", # dummy creation
+                      "sandwich",    # robust standard errors
+                      "lmtest",      # robust standard errors
+                      "jtools",      # summary statistics (robust standard errors)
+                      "fBasics",     # summary statistics
+                      "arsenal",     # summary statistics
+                      "data.table",  # tables
+                      "stargazer",   # tables
+                      "xtable",      # tables
+                      "expss",       # tables, labels 
+                      "sjlabelled",  # labels
+                      "lubridate",   # dates
+                      "mfx",         # marginal effects for nonlinear models, e.g. probit 
+                      "ggplot2")     # plots and graphs 
+                     
+
+# Uncomment the following line the first time you use these packages to install them
+# install.packages(packages_vector)
+lapply(packages_vector, require, character.only = TRUE) 
+```
+
+
+```{r}
+setwd("G:/My Drive/SwissTPH/Spring2025ClassesBasel/CausalInferencePolicyEvaluation/04_Small_Assignments/Assignment_1/")
+# Loading given dataset
+load("Assignment_1.RData")
+```
+
+```{r}
+glimpse(raw.data)
+
+```
+
+## Question 1
+
+Creating a dummy variable indicating if someone is under 40 years old
+
+```{r}
+
+raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% rowSums()
+
+# Getting an idea of current variables
+raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% head()
+
+# Creating dummy variable for under 40 years of age (this seems to just correspond to agegr_2?)
+raw.data$under_40yo <- ifelse(raw.data$agegr_2 == 1, raw.data$agegr_2, 0)
+
+raw.data[c("under_40yo", "agegr_2", "agegr_3", "agegr_4")] %>% head()
+```
+
+Examining the balance of this dummy variable across treatment groups
+```{r}
+cro(raw.data$treat, raw.data$under_40yo)
+cro_cpct_responses(raw.data$under_40yo, raw.data$treat)
+cro_cpct_responses(raw.data$treat, raw.data$under_40yo)
+```
+
+```{r}
+raw.data$idobs
+attach(raw.data)
+idobs
+```
+
+
+Calculating the standardize bias and difference in means
+```{r}
+balance_check.model <- function(x){
+  
+  # Conditional means
+  mean_d0 <- mean(x[treat==0])
+  mean_d1 <- mean(x[treat==1])
+  
+  # Variances in subsamples
+  var_d0 <- var(x[treat==0])
+  var_d1 <- var(x[treat==1])
+  
+  # Difference in means
+  diff_d <- lm(x ~ treat)
+  cov <- vcovHC(diff_d, type = "HC")
+  robust.se <- sqrt(diag(cov))
+  
+  # Absolute standardized bias
+  sb <- abs((mean_d1-mean_d0)/sqrt((var_d0+var_d1)/2))*100
+  
+  # Store output as a list 
+  list(mean_d0 = mean_d0, 
+       mean_d1 = mean_d1,
+       diff_d = diff_d$coefficients[2], 
+       robust.se = robust.se[2], 
+       pval = 2*pnorm(-abs(diff_d$coefficients[2]/robust.se[2])),
+       SB = sb)             
+}
+
+balance_check.model(raw.data$under_40yo)
+```
+
+The simple comparison of balance across groups reveals that the probability of being treated (i.e. being a participant) is comparable between those under the age of 40 and those 40 years old or older, with 46% of those under 40 being a participant and 45.4% of those 40 years old or older being a participant. The difference in means statistical test evaluated the null hypothesis that those under 40 year old contains have the same probability of being treated as those over 40 years old. The p-value of 0.431 suggests that is not enough evidence to reject the null, i.e. there is not enough evidence to conclude that the two groups have a different probability of being treated.
+
+I would say it is not so straightforward to decide whether or not it should be included. Strictly speaking, in terms of causal effect identification, it is not necessary to include if it does not influence the probability of being treated, even if it is associated with the outcome. However, including the variable could improve the precision of the estimate, especially if it is a strong predictor of the outcome. 
+
+It is perhaps even more complicated because the question precisely asks if we should `account for age differences'. If this is taken to ask if we should account for age differences more generally, the answer might change. Here we have calculated an age variable we have is dichotomizing a continuous (or discrete...) quantity. It could be the case that an age variable defined in a different manner could be predictive of treatment status, indicating that it should be included.
+
+## Question 2
+### (a)
+```{r}
+# What is the program start??
+
+# Set maximum horizon to look at after start of unemployment, 24 months
+maxdur <- 24
+
+# Matrix with as many rows as observations, and as many columns as months in horizon 
+emp <- matrix(0, nrow=nrow(raw.data), ncol=(maxdur))
+
+# Name the columns for each month
+emp_list <- paste("emp", 1:maxdur, sep="_")
+colnames(emp) <- emp_list
+
+# Replace i^th column = 1 if exited unemployment in month i
+for (i in 1:maxdur) {
+  emp[,i] = ifelse(raw.data$date_end < raw.data$date_start + 30*i & 
+                   raw.data$date_end >= raw.data$date_start + 30*(i-1), 1, 0)
+}
+
+# Bind as data frame
+emp <- as.data.frame(emp)
+data_reg <- cbind(data_reg, emp)
+
+```
+
+
+## Question 3
+```{r}
+
+```
+
+## Question 4
+```{r}
+
+```
+
+
+## Question 5
+```{r}
+
+```
+
+
+## Question 6
+```{r}
+
+```
