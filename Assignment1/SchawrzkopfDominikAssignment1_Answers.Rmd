@@ -38,7 +38,7 @@ lapply(packages_vector, require, character.only = TRUE)
 
 
 ```{r}
-setwd("G:/My Drive/SwissTPH/Spring2025ClassesBasel/CausalInferencePolicyEvaluation/04_Small_Assignments/Assignment_1/")
+setwd("C:/Users/schwdo/switchdrive/PhD Dominik/Courses/58920-01 – Causal Inference for Policy Evaluation/04_Assignments/Assignment_1")
 # Loading given dataset
 load("Assignment_1.RData")
 ```
@@ -59,28 +59,33 @@ raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% rowSums()
 # Getting an idea of current variables
 raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% head()
 
-# Creating dummy variable for under 40 years of age (this seems to just correspond to agegr_2?)
-raw.data$under_40yo <- ifelse(raw.data$agegr_2 == 1, raw.data$agegr_2, 0)
+# Creating dummy variable for under 40 years of age (if not agegr_3 & agegr_4)
+raw.data$under_40yo <- ifelse(raw.data$agegr_3 == 0 & raw.data$agegr_4 == 0, 1, 0)
 
 raw.data[c("under_40yo", "agegr_2", "agegr_3", "agegr_4")] %>% head()
 ```
 
-Examining the balance of this dummy variable across treatment groups
+Compute the share of people below 40 by treatment status.
 ```{r}
-cro(raw.data$treat, raw.data$under_40yo)
-cro_cpct_responses(raw.data$under_40yo, raw.data$treat)
-cro_cpct_responses(raw.data$treat, raw.data$under_40yo)
+raw.data %>%
+  group_by(treat) %>%
+  summarise(share_under_40 = mean(under_40yo, na.rm = TRUE))
 ```
 
 ```{r}
-raw.data$idobs
 attach(raw.data)
-idobs
 ```
 
-
-Calculating the standardize bias and difference in means
+Report the standardized bias and the difference in means along with a p-value.
 ```{r}
+# Differences in characteristics and outcomes by treatment status
+#-------------------------------------------------------------------
+
+# a selection of controls
+x_desc<- cbind(under_40yo)
+x_desc_names<- colnames(x_desc)
+
+# Define a function estimating the differences in variables across D
 balance_check.model <- function(x){
   
   # Conditional means
@@ -96,7 +101,7 @@ balance_check.model <- function(x){
   cov <- vcovHC(diff_d, type = "HC")
   robust.se <- sqrt(diag(cov))
   
-  # Absolute standardized bias
+  # Absolute standardized bias (difference in means over average std dev - assuming similar size of the groups)
   sb <- abs((mean_d1-mean_d0)/sqrt((var_d0+var_d1)/2))*100
   
   # Store output as a list 
@@ -108,19 +113,38 @@ balance_check.model <- function(x){
        SB = sb)             
 }
 
-balance_check.model(raw.data$under_40yo)
+# Apply to selection of covariates (MARGIN = 2 to loop over columns)
+diff_output <- apply(X = x_desc, MARGIN = 2, FUN = balance_check.model)
+# Convert output in list format into a data frame 
+diff_output<-as.data.frame(rbindlist(diff_output))
+
+# Add number of observations (don't forget the comma!)
+raw.data$treat <- as.vector(raw.data$treat)
+obs <- c(nrow(raw.data[raw.data$treat==0,]), 
+         nrow(raw.data[raw.data$treat==1,]), 
+         NA, NA, NA, NA)
+diff_output <- rbind(diff_output, obs)
+
+# Display in desired format
+rownames(diff_output)<- c(x_desc_names, "Observations")
+colnames(diff_output)<- c("E(X|D=0)", "E(X|D=1)", "Difference", "s.e.", 
+                          "p-value", "Abs. SB")
+print("Difference in means by treatment status and standardized bias")
+print(round(diff_output,digits = 3))
 ```
+Based on these metrics, briefly comment on the balancedness of the treatment
+and control group with respect to age and whether we should account for age differences
+in our analysis:
+The dummy variable under_40yo seems well balanced between treatment and control groups, with low standardized bias (2.6%) and an insignificant difference in means at the 5% significance level).
 
-The simple comparison of balance across groups reveals that the probability of being treated (i.e. being a participant) is comparable between those under the age of 40 and those 40 years old or older, with 46% of those under 40 being a participant and 45.4% of those 40 years old or older being a participant. The difference in means statistical test evaluated the null hypothesis that those under 40 year old contains have the same probability of being treated as those over 40 years old. The p-value of 0.431 suggests that is not enough evidence to reject the null, i.e. there is not enough evidence to conclude that the two groups have a different probability of being treated.
-
-I would say it is not so straightforward to decide whether or not it should be included. Strictly speaking, in terms of causal effect identification, it is not necessary to include if it does not influence the probability of being treated, even if it is associated with the outcome. However, including the variable could improve the precision of the estimate, especially if it is a strong predictor of the outcome. 
-
-It is perhaps even more complicated because the question precisely asks if we should `account for age differences'. If this is taken to ask if we should account for age differences more generally, the answer might change. Here we have calculated an age variable we have is dichotomizing a continuous (or discrete...) quantity. It could be the case that an age variable defined in a different manner could be predictive of treatment status, indicating that it should be included.
+We should still account for age differences in our analysis due to:
+1. Heterogeneity: Age might moderate treatment effects (e.g., younger vs older participants respond differently), so including it enables subgroup or interaction analysis.
+2. Robustness: Including covariates protects against chance imbalances or unobserved heterogeneity in smaller subgroups.
+3. Improved precision: Even small imbalances, or natural outcome variation related to age, can lead to improved statistical efficiency when controlled for.
 
 ## Question 2
 ### (a)
 ```{r}
-# What is the program start??
 
 # Set maximum horizon to look at after start of unemployment, 24 months
 maxdur <- 24
