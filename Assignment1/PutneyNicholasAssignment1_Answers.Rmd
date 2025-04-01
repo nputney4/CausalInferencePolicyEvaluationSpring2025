@@ -8,7 +8,7 @@ date: "2025-03-27"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # Define packages that you need
 packages_vector <- c("tidyverse",    # package collection for data management 
                       "dplyr",       # set of functions to work with data 
@@ -45,7 +45,6 @@ load("Assignment_1.RData")
 
 ```{r}
 glimpse(raw.data)
-
 ```
 
 ## Question 1
@@ -54,15 +53,17 @@ Creating a dummy variable indicating if someone is under 40 years old
 
 ```{r}
 
-raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% rowSums()
-
 # Getting an idea of current variables
 raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% head()
 
-# Creating dummy variable for under 40 years of age (this seems to just correspond to agegr_2?)
-raw.data$under_40yo <- ifelse(raw.data$agegr_2 == 1, raw.data$agegr_2, 0)
+# Seeing if there are rows with 0s for each dummy
+raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% rowSums()
 
-raw.data[c("under_40yo", "agegr_2", "agegr_3", "agegr_4")] %>% head()
+# Finding rows which correspond to those under 40 (note all those under 18 and above 60 were dropped)
+raw.data$under_40yo <- ifelse(rowSums(raw.data[c("agegr_3", "agegr_4")]) == 0, 1, 0)
+
+# Getting an idea of current variables
+raw.data[c("agegr_2", "agegr_3", "agegr_4", "under_40yo")] %>% head()
 ```
 
 Examining the balance of this dummy variable across treatment groups
@@ -73,9 +74,7 @@ cro_cpct_responses(raw.data$treat, raw.data$under_40yo)
 ```
 
 ```{r}
-raw.data$idobs
 attach(raw.data)
-idobs
 ```
 
 
@@ -111,36 +110,174 @@ balance_check.model <- function(x){
 balance_check.model(raw.data$under_40yo)
 ```
 
-The simple comparison of balance across groups reveals that the probability of being treated (i.e. being a participant) is comparable between those under the age of 40 and those 40 years old or older, with 46% of those under 40 being a participant and 45.4% of those 40 years old or older being a participant. The difference in means statistical test evaluated the null hypothesis that those under 40 year old contains have the same probability of being treated as those over 40 years old. The p-value of 0.431 suggests that is not enough evidence to reject the null, i.e. there is not enough evidence to conclude that the two groups have a different probability of being treated.
+The simple comparison of balance across groups reveals that the probability of being treated (i.e. being a participant) is comparable between those under the age of 40 and those 40 years old or older, with 45% of those under 40 being a participant and 46.3% of those 40 years old or older being a participant. The difference in means statistical test evaluated the null hypothesis that those under 40 year old contains have the same probability of being treated as those over 40 years old. The p-value of 0.073 suggests that is not enough evidence to reject the null, (assuming we decided on a 5% significance level a priori) i.e. there is not enough evidence to conclude that the two groups have a different probability of being treated.
 
 I would say it is not so straightforward to decide whether or not it should be included. Strictly speaking, in terms of causal effect identification, it is not necessary to include if it does not influence the probability of being treated, even if it is associated with the outcome. However, including the variable could improve the precision of the estimate, especially if it is a strong predictor of the outcome. 
 
-It is perhaps even more complicated because the question precisely asks if we should `account for age differences'. If this is taken to ask if we should account for age differences more generally, the answer might change. Here we have calculated an age variable we have is dichotomizing a continuous (or discrete...) quantity. It could be the case that an age variable defined in a different manner could be predictive of treatment status, indicating that it should be included.
+It is perhaps even more complicated because the question precisely asks if we should `account for age differences'. If this is taken to ask if we should account for age differences more generally, the answer might change. Here we have calculated an age variable that is dichotomizing a continuous (or discrete...) quantity. It could be the case that an age variable defined in a different manner could be predictive of treatment status, indicating that it should be included.
 
 ## Question 2
 ### (a)
 ```{r}
-# What is the program start??
-
-# Set maximum horizon to look at after start of unemployment, 24 months
+# Set the horizon
 maxdur <- 24
 
-# Matrix with as many rows as observations, and as many columns as months in horizon 
-emp <- matrix(0, nrow=nrow(raw.data), ncol=(maxdur))
+# Create a matrix with n rows and 24 columns
+emp <- matrix(0, nrow = nrow(raw.data), ncol = maxdur)
 
-# Name the columns for each month
-emp_list <- paste("emp", 1:maxdur, sep="_")
+# Create column names like emp_1 to emp_24
+emp_list <- paste("emp", 1:maxdur, sep = "_")
 colnames(emp) <- emp_list
 
-# Replace i^th column = 1 if exited unemployment in month i
+# Fill in the matrix
 for (i in 1:maxdur) {
-  emp[,i] = ifelse(raw.data$date_end < raw.data$date_start + 30*i & 
-                   raw.data$date_end >= raw.data$date_start + 30*(i-1), 1, 0)
+  emp[, i] <- ifelse(
+    raw.data$date_end < raw.data$date_start + 30 * i,
+    1,  # employed in month i
+    0   # still unemployed in month i
+  )
 }
 
-# Bind as data frame
+# Convert to data frame and combine with original data
 emp <- as.data.frame(emp)
-data_reg <- cbind(data_reg, emp)
+raw.data <- cbind(raw.data, emp)
+
+
+raw.data[c("id", "idobs", "date_start", "date_end", "treat", paste0("emp_", 1:24))]
+```
+
+### (b)
+
+```{r}
+# Splitting data into under 40 years old and over 40 years old
+data_u40 <- raw.data %>% filter(under_40yo == 1)
+data_o40 <- raw.data %>% filter(under_40yo == 0)
+
+treat_u40 <- data_u40$treat
+treat_o40 <- data_o40$treat
+
+x_u40 <- as.matrix(dplyr::select(data_u40, 
+                              covs))
+x_o40 <- as.matrix(dplyr::select(data_o40, 
+                              covs))
+x_names <- colnames(x_u40)
+
+```
+
+
+```{r}
+# Estimate the p-score model for under 40
+pscore.model_u40 <- glm(treat_u40 ~ x_u40, family = binomial(link = "probit"))
+summ(pscore.model_u40, robust = "HC1")
+
+# Estimate the p-score model for over 40
+pscore.model_o40 <- glm(treat_o40 ~ x_o40, family = binomial(link = "probit"))
+summ(pscore.model_o40, robust = "HC1")
+```
+
+```{r}
+data_u40$pscore <- pscore.model_u40$fitted.values 
+summary(data_u40$pscore)
+
+data_o40$pscore <- pscore.model_o40$fitted.values 
+summary(data_o40$pscore)
+
+```
+
+```{r}
+# Create a factor variable for treatment status for the plot
+data_u40$treat_f <- factor(treat_u40, 
+                           levels = c(0,1), 
+                           label = c("D=0", "D=1")) 
+
+# Density plot for the propensity score by treatment status
+ggplot(data_u40, aes(x = pscore, fill = treat_f)) + 
+    geom_density(alpha=0.4) + 
+    scale_fill_grey()+ 
+    theme_bw(base_size = 20) +
+    xlim(0, 1) + ggtitle("P-scores for under 40 years of age")
+
+
+# Create a factor variable for treatment status for the plot
+data_o40$treat_f <- factor(treat_o40, 
+                           levels = c(0,1), 
+                           label = c("D=0", "D=1")) 
+
+# Density plot for the propensity score by treatment status
+ggplot(data_o40, aes(x = pscore, fill = treat_f)) + 
+    geom_density(alpha=0.4) + 
+    scale_fill_grey()+ 
+    theme_bw(base_size = 20) +
+    xlim(0, 1) + ggtitle("P-scores for over 40 years of age")
+
+```
+
+
+```{r}
+# As it is the ATE, the min and max pscores for both treated and not treated should be similar - i.e. "common support"
+min(data_u40$pscore[data_u40$treat == 1])
+max(data_u40$pscore[data_u40$treat == 1])
+
+min(data_u40$pscore[data_u40$treat == 0])
+max(data_u40$pscore[data_u40$treat == 0])
+
+trim_pscores <- function(data) {
+  # Compute min and max pscore for treated and control groups
+  treated_min <- min(data$pscore[data$treat == 1], na.rm = TRUE)
+  treated_max <- max(data$pscore[data$treat == 1], na.rm = TRUE)
+  control_min <- min(data$pscore[data$treat == 0], na.rm = TRUE)
+  control_max <- max(data$pscore[data$treat == 0], na.rm = TRUE)
+
+  # Define common support
+  min_overlap <- max(treated_min, control_min)
+  max_overlap <- min(treated_max, control_max)
+
+  # Trim the dataset
+  trimmed_data <- data[data$pscore >= min_overlap & data$pscore <= max_overlap, ]
+
+  return(trimmed_data)
+}
+
+data_u40_trimmed <- trim_pscores(data_u40)
+data_o40_trimmed <- trim_pscores(data_o40)
+```
+
+
+```{r}
+# Only 1 observation removed from each
+nrow(data_u40) - nrow(data_u40_trimmed)
+nrow(data_o40) - nrow(data_o40_trimmed)
+
+```
+
+```{r}
+# Checking for aligment
+min(data_u40_trimmed$pscore[data_u40_trimmed$treat == 1])
+max(data_u40_trimmed$pscore[data_u40_trimmed$treat == 1])
+
+min(data_u40_trimmed$pscore[data_u40_trimmed$treat == 0])
+max(data_u40_trimmed$pscore[data_u40_trimmed$treat == 0])
+
+# Density plot for the propensity score by treatment status
+ggplot(data_u40_trimmed, aes(x = pscore, fill = treat_f)) + 
+    geom_density(alpha=0.4) + 
+    scale_fill_grey()+ 
+    theme_bw(base_size = 20) +
+    xlim(0, 1) + ggtitle("P-scores for over 40 years of age - Trimmed")
+
+# Density plot for the propensity score by treatment status
+ggplot(data_o40_trimmed, aes(x = pscore, fill = treat_f)) + 
+    geom_density(alpha=0.4) + 
+    scale_fill_grey()+ 
+    theme_bw(base_size = 20) +
+    xlim(0, 1) + ggtitle("P-scores for over 40 years of age - Trimmed")
+```
+
+### (c)
+
+```{r}
+# Estimating the ATE 
+
 
 ```
 
