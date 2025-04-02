@@ -1,7 +1,15 @@
 ---
-title: "Causal Inference Policy Evaluation Assignment 1"
-output: html_document
+title: "Causal Inference: Policy Evaluation — Assignment 1"
+author: "Your Name"
 date: "2025-03-27"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    highlight: tango
+    df_print: paged
 ---
 
 ```{r setup, include=FALSE}
@@ -28,9 +36,10 @@ packages_vector <- c("tidyverse",    # package collection for data management
                       "sjlabelled",  # labels
                       "lubridate",   # dates
                       "mfx",         # marginal effects for nonlinear models, e.g. probit 
-                      "ggplot2")     # plots and graphs 
+                      "ggplot2",
+                     "causalweight",
+                     "gt")     # plots and graphs 
                      
-
 # Uncomment the following line the first time you use these packages to install them
 # install.packages(packages_vector)
 lapply(packages_vector, require, character.only = TRUE) 
@@ -141,10 +150,29 @@ for (i in 1:maxdur) {
 # Convert to data frame and combine with original data
 emp <- as.data.frame(emp)
 raw.data <- cbind(raw.data, emp)
+```
 
+
+```{r}
+# Create the outcome variable - "monthly employment probability"
 
 raw.data[c("id", "idobs", "date_start", "date_end", "treat", paste0("emp_", 1:24))]
+raw.data$month_employ_prob <- raw.data %>% dplyr::select(paste0("emp_", 1:24)) %>% rowMeans()
+
+# Inspect distribution of monthly employment probability (for each spell)
+hist(raw.data$month_employ_prob, main = "Monthly Employment Probability", xlab = "Probability")
+hist(subset(raw.data$month_employ_prob, treat == 0), main = "Monthly Employment Probability - Untreated", xlab = "Probability")
+hist(subset(raw.data$month_employ_prob, treat == 1), main = "Monthly Employment Probability - Treated", xlab = "Probability")
 ```
+
+```{r}
+# Sanity check for employment duration length
+raw.data$duration <- raw.data$date_end - raw.data$date_start
+hist(as.numeric(raw.data$duration), xlab = "days", main = "Length of Unemployment Spells")
+hist(subset(as.numeric(raw.data$duration), treat == 0), xlab = "days", main = "Length of Unemployment Spells - Untreated")
+hist(subset(as.numeric(raw.data$duration), treat == 1), xlab = "days", main = "Length of Unemployment Spells - Treated")
+```
+
 
 ### (b)
 
@@ -231,7 +259,7 @@ trim_pscores <- function(data) {
   # Define common support
   min_overlap <- max(treated_min, control_min)
   max_overlap <- min(treated_max, control_max)
-
+  
   # Trim the dataset
   trimmed_data <- data[data$pscore >= min_overlap & data$pscore <= max_overlap, ]
 
@@ -263,7 +291,7 @@ ggplot(data_u40_trimmed, aes(x = pscore, fill = treat_f)) +
     geom_density(alpha=0.4) + 
     scale_fill_grey()+ 
     theme_bw(base_size = 20) +
-    xlim(0, 1) + ggtitle("P-scores for over 40 years of age - Trimmed")
+    xlim(0, 1) + ggtitle("P-scores for under 40 years of age - Trimmed")
 
 # Density plot for the propensity score by treatment status
 ggplot(data_o40_trimmed, aes(x = pscore, fill = treat_f)) + 
@@ -272,34 +300,152 @@ ggplot(data_o40_trimmed, aes(x = pscore, fill = treat_f)) +
     theme_bw(base_size = 20) +
     xlim(0, 1) + ggtitle("P-scores for over 40 years of age - Trimmed")
 ```
-
 ### (c)
-
 ```{r}
-# Estimating the ATE 
-
+# Define the outcome - "monthly employment probability"
+y1_u40 <- data_u40_trimmed$month_employ_prob 
+y1_o40 <- data_o40_trimmed$month_employ_prob
+x_u40 <- as.matrix(data_u40_trimmed[covs])
+x_o40 <- as.matrix(data_o40_trimmed[covs])
+treat_u40 <- data_u40_trimmed$treat
+treat_o40 <- data_o40_trimmed$treat
 
 ```
 
+
+
+```{r}
+length(y1_u40) == length(treat_u40) 
+length(y1_u40) == dim(x_u40)[1]
+
+length(y1_o40) == length(treat_o40)
+length(y1_o40) == dim(x_o40)[[1]]
+
+# Estimating the ATE 
+# IPW - Estimating the ATET based on the causalweight package
+ipw_ate_u40 <- treatweight(y = y1_u40, # take initial data 
+                        d = treat_u40, 
+                        x = x_u40, 
+                        ATET = FALSE, # if = FALSE, estimates ATE (default)
+                        trim = 0.0, # data was already trimmed previously
+                        boot = 100) # number of bootstrap replications
+
+ipw_ate_o40 <- treatweight(y = y1_o40, # take initial data 
+                        d = treat_o40, 
+                        x = x_o40, 
+                        ATET = FALSE, # if = FALSE, estimates ATE (default)
+                        trim = 0.0, # data was already trimmed previously
+                        boot = 100) # number of bootstrap replications
+```
+
+
+```{r}
+
+#ipw_ate_u40
+#ipw_ate_o40
+
+# Creating a data frame to summarize results
+ipw_table_df <- data.frame(
+  Group = c("Under 40", "Over 40"),
+  Effect = c(ipw_ate_u40$effect, ipw_ate_o40$effect),
+  SE = c(ipw_ate_u40$se, ipw_ate_o40$se),
+  P_Value = c(ipw_ate_u40$pval, ipw_ate_o40$pval),
+  Y1 = c(ipw_ate_u40$y1, ipw_ate_o40$y1),
+  Y0 = c(ipw_ate_u40$y0, ipw_ate_o40$y0)
+)
+
+# Displaying results in a nice way
+ipw_gt <- ipw_table_df %>%
+  gt() %>% tab_header(title = "Inverse Probability Weighting (IPW) Results",
+    subtitle = "Estimated ATE by Age Group") %>%
+  fmt_number(columns = c(Effect, SE, Y1, Y0), decimals = 3) %>%
+  fmt_number(columns = P_Value, decimals = 4) %>%cols_label(
+    Group = "Age Group", Effect = "ATE", SE = "Std. Error",
+    P_Value = "p-value", Y1 = "Mean (Treated)", Y0 = "Mean (Untreated)"c
+  )
+
+ipw_gt
+```
+
+It seems that the average treatment effect is quite different for those over 40 years old and those under 40 years old, with an average treatment effect of 0.135 and 0.191, respectively. This suggests that the training program had a greater impact on the older age group.
 
 ## Question 3
 ```{r}
-
+# Create function to do IPW for each month
+reg_monthly_ipw <- function(y, d, x) {
+  ipw <- treatweight(y = y, d = d, x = x, ATET = FALSE, trim = 0, boot = 100)
+  list(effect = ipw$effect, se = ipw$se)
+}
 ```
+
+
+```{r}
+### For under 40 years of age
+
+# Create a matrix for employment status for each month
+emp_u40 <- data_u40_trimmed %>% dplyr::select(colnames(emp)) %>% as.matrix()
+
+# Apply IPW each month
+ipw_monthly_u40 <- apply(emp_u40, 2, function(y) reg_monthly_ipw(y, treat_u40, x_u40))
+
+# Look at results
+ipw_monthly_u40_df <- rbindlist(ipw_monthly_u40)
+ipw_monthly_u40_df$month <- 1:maxdur
+
+# Add confidence intervals
+ipw_monthly_u40_df <- ipw_monthly_u40_df %>%
+  mutate(
+    cil = effect - 1.96 * se,
+    cih = effect + 1.96 * se,
+    sig = ifelse(abs(effect / se) > 1.64, effect, NA)
+  )
+```
+
+
+```{r}
+### For over 40 years of age
+
+# Create a matrix for employment status for each month
+emp_o40 <- data_o40_trimmed %>% dplyr::select(colnames(emp)) %>% as.matrix()
+
+# Apply IPW each month
+ipw_monthly_o40 <- apply(emp_o40, 2, function(y) reg_monthly_ipw(y, treat_o40, x_o40))
+
+# Look at results
+ipw_monthly_o40_df <- rbindlist(ipw_monthly_o40)
+ipw_monthly_o40_df$month <- 1:maxdur
+
+# Add confidence intervals
+ipw_monthly_o40_df <- ipw_monthly_o40_df %>%
+  mutate(
+    cil = effect - 1.96 * se,
+    cih = effect + 1.96 * se,
+    sig = ifelse(abs(effect / se) > 1.64, effect, NA)
+  )
+```
+
+```{r}
+# Plotting results by month by age group
+ipw_monthly_u40_df$Group <- "Under 40"
+ipw_monthly_o40_df$Group <- "Over 40"
+ipw_monthly_all <- bind_rows(ipw_monthly_u40_df, ipw_monthly_o40_df)
+
+
+ggplot(ipw_monthly_all, aes(x = month, y = effect, color = Group, fill = Group)) +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = cil, ymax = cih), alpha = 0.2, color = NA) +
+  geom_point(aes(y = sig), shape = 18, size = 3) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_bw(base_size = 18) +
+  labs(
+    title = "Monthly ATEs on Employment Probability by Age Group",
+    x = "Months after program start",
+    y = "Average Treatment Effect"
+  )
+```
+
+The figure would suggest that effect of the program on employment probability increases for both age groups at a similar rate over time up until month five. After month 5, the program has a greater effect for those over 40 years old than those under 40 years old. It is also worth noting that the average treatment effect is positive for each month, indicating that, for each month, the group of program participants had an average employment probability higher than non-participants.
 
 ## Question 4
-```{r}
 
-```
-
-
-## Question 5
-```{r}
-
-```
-
-
-## Question 6
-```{r}
-
-```
+See other document
