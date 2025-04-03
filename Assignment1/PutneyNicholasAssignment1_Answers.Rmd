@@ -4,19 +4,25 @@ author: "Your Name"
 date: "2025-03-27"
 output: 
   html_document:
-    toc: true
-    toc_float: true
     number_sections: true
-    theme: flatly
-    highlight: tango
-    df_print: paged
+    toc: true
+    fig_caption: true
+    keep_tex: true         # Optional: keeps LaTeX file for debugging
+    latex_engine: xelatex  # Use if you're using custom fonts or want Unicode
+    code_folding: true
+fontsize: 11pt
+mainfont: "Times New Roman"  # Optional: works with xelatex
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
 ```
 
-```{r message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE}
 # Define packages that you need
 packages_vector <- c("tidyverse",    # package collection for data management 
                       "dplyr",       # set of functions to work with data 
@@ -53,7 +59,7 @@ load("Assignment_1.RData")
 ```
 
 ```{r}
-glimpse(raw.data)
+#glimpse(raw.data)
 ```
 
 ## Question 1
@@ -153,12 +159,15 @@ raw.data <- cbind(raw.data, emp)
 ```
 
 
-```{r}
+```{r include=FALSE}
 # Create the outcome variable - "monthly employment probability"
 
 raw.data[c("id", "idobs", "date_start", "date_end", "treat", paste0("emp_", 1:24))]
 raw.data$month_employ_prob <- raw.data %>% dplyr::select(paste0("emp_", 1:24)) %>% rowMeans()
+```
 
+
+```{r}
 # Inspect distribution of monthly employment probability (for each spell)
 hist(raw.data$month_employ_prob, main = "Monthly Employment Probability", xlab = "Probability")
 hist(subset(raw.data$month_employ_prob, treat == 0), main = "Monthly Employment Probability - Untreated", xlab = "Probability")
@@ -193,7 +202,7 @@ x_names <- colnames(x_u40)
 ```
 
 
-```{r}
+```{r include=FALSE}
 # Estimate the p-score model for under 40
 pscore.model_u40 <- glm(treat_u40 ~ x_u40, family = binomial(link = "probit"))
 summ(pscore.model_u40, robust = "HC1")
@@ -203,7 +212,7 @@ pscore.model_o40 <- glm(treat_o40 ~ x_o40, family = binomial(link = "probit"))
 summ(pscore.model_o40, robust = "HC1")
 ```
 
-```{r}
+```{r include=FALSE}
 data_u40$pscore <- pscore.model_u40$fitted.values 
 summary(data_u40$pscore)
 
@@ -241,7 +250,7 @@ ggplot(data_o40, aes(x = pscore, fill = treat_f)) +
 ```
 
 
-```{r}
+```{r include=FALSE}
 # As it is the ATE, the min and max pscores for both treated and not treated should be similar - i.e. "common support"
 min(data_u40$pscore[data_u40$treat == 1])
 max(data_u40$pscore[data_u40$treat == 1])
@@ -310,72 +319,66 @@ x_o40 <- as.matrix(data_o40_trimmed[covs])
 treat_u40 <- data_u40_trimmed$treat
 treat_o40 <- data_o40_trimmed$treat
 
+x_u40
+
 ```
 
-
-
-```{r}
+```{r include=FALSE}
+s_boot <- 10
 length(y1_u40) == length(treat_u40) 
 length(y1_u40) == dim(x_u40)[1]
 
 length(y1_o40) == length(treat_o40)
 length(y1_o40) == dim(x_o40)[[1]]
 
-# Estimating the ATE 
-# IPW - Estimating the ATET based on the causalweight package
-ipw_ate_u40 <- treatweight(y = y1_u40, # take initial data 
-                        d = treat_u40, 
-                        x = x_u40, 
-                        ATET = FALSE, # if = FALSE, estimates ATE (default)
-                        trim = 0.0, # data was already trimmed previously
-                        boot = 100) # number of bootstrap replications
-
-ipw_ate_o40 <- treatweight(y = y1_o40, # take initial data 
-                        d = treat_o40, 
-                        x = x_o40, 
-                        ATET = FALSE, # if = FALSE, estimates ATE (default)
-                        trim = 0.0, # data was already trimmed previously
-                        boot = 100) # number of bootstrap replications
+# # Estimating the ATE 
+# # IPW - Estimating the ATET based on the causalweight package
+# ipw_ate_u40 <- treatweight(y = y1_u40, # take initial data 
+#                         d = treat_u40, 
+#                         x = x_u40, 
+#                         ATET = FALSE, # if = FALSE, estimates ATE (default)
+#                         trim = 0.0, # data was already trimmed previously
+#                         boot = s_boot) # number of bootstrap replications
+# 
+# ipw_ate_o40 <- treatweight(y = y1_o40, # take initial data 
+#                         d = treat_o40, 
+#                         x = x_o40, 
+#                         ATET = FALSE, # if = FALSE, estimates ATE (default)
+#                         trim = 0.0, # data was already trimmed previously
+#                         boot = s_boot) # number of bootstrap replications
 ```
 
 
-```{r}
-
-#ipw_ate_u40
-#ipw_ate_o40
-
-# Creating a data frame to summarize results
-ipw_table_df <- data.frame(
-  Group = c("Under 40", "Over 40"),
-  Effect = c(ipw_ate_u40$effect, ipw_ate_o40$effect),
-  SE = c(ipw_ate_u40$se, ipw_ate_o40$se),
-  P_Value = c(ipw_ate_u40$pval, ipw_ate_o40$pval),
-  Y1 = c(ipw_ate_u40$y1, ipw_ate_o40$y1),
-  Y0 = c(ipw_ate_u40$y0, ipw_ate_o40$y0)
-)
-
-# Displaying results in a nice way
-ipw_gt <- ipw_table_df %>%
-  gt() %>% tab_header(title = "Inverse Probability Weighting (IPW) Results",
-    subtitle = "Estimated ATE by Age Group") %>%
-  fmt_number(columns = c(Effect, SE, Y1, Y0), decimals = 3) %>%
-  fmt_number(columns = P_Value, decimals = 4) %>%cols_label(
-    Group = "Age Group", Effect = "ATE", SE = "Std. Error",
-    P_Value = "p-value", Y1 = "Mean (Treated)", Y0 = "Mean (Untreated)"c
-  )
-
-ipw_gt
-```
-
-It seems that the average treatment effect is quite different for those over 40 years old and those under 40 years old, with an average treatment effect of 0.135 and 0.191, respectively. This suggests that the training program had a greater impact on the older age group.
-
-## Question 3
 ```{r}
 # Create function to do IPW for each month
 reg_monthly_ipw <- function(y, d, x) {
-  ipw <- treatweight(y = y, d = d, x = x, ATET = FALSE, trim = 0, boot = 100)
+  ipw <- treatweight(y = y, d = d, x = x, ATET = FALSE, trim = 0, boot = s_boot)
   list(effect = ipw$effect, se = ipw$se)
 }
+```
+
+
+
+```{r}
+### For over 40 years of age
+
+# Create a matrix for employment status for each month
+emp_o40 <- data_o40_trimmed %>% dplyr::select(colnames(emp)) %>% as.matrix()
+
+# Apply IPW each month
+ipw_monthly_o40 <- apply(emp_o40, 2, function(y) reg_monthly_ipw(y, treat_o40, x_o40))
+
+# Look at results
+ipw_monthly_o40_df <- rbindlist(ipw_monthly_o40)
+ipw_monthly_o40_df$month <- 1:maxdur
+
+# Add confidence intervals
+ipw_monthly_o40_df <- ipw_monthly_o40_df %>%
+  mutate(
+    cil = effect - 1.96 * se,
+    cih = effect + 1.96 * se,
+    sig = ifelse(abs(effect / se) > 1.64, effect, NA)
+  )
 ```
 
 
@@ -401,28 +404,56 @@ ipw_monthly_u40_df <- ipw_monthly_u40_df %>%
   )
 ```
 
+```{r}
+ipw_monthly_u40
+```
+
 
 ```{r}
-### For over 40 years of age
-
-# Create a matrix for employment status for each month
-emp_o40 <- data_o40_trimmed %>% dplyr::select(colnames(emp)) %>% as.matrix()
-
-# Apply IPW each month
-ipw_monthly_o40 <- apply(emp_o40, 2, function(y) reg_monthly_ipw(y, treat_o40, x_o40))
-
-# Look at results
-ipw_monthly_o40_df <- rbindlist(ipw_monthly_o40)
-ipw_monthly_o40_df$month <- 1:maxdur
-
-# Add confidence intervals
-ipw_monthly_o40_df <- ipw_monthly_o40_df %>%
-  mutate(
-    cil = effect - 1.96 * se,
-    cih = effect + 1.96 * se,
-    sig = ifelse(abs(effect / se) > 1.64, effect, NA)
+# Create tables by group
+ipw_monthly_u40_gt <- ipw_monthly_df %>%
+  filter(Group == "Under 40") %>%
+  gt() %>%
+  tab_header(
+    title = "Monthly IPW Estimates: Under 40",
+    subtitle = "Inverse Probability Weighting (ATE Estimates per Month)"
+  ) %>%
+  fmt_number(columns = c(effect, se, cil, cih, sig), decimals = 3) %>%
+  cols_label(
+    month = "Month",
+    effect = "ATE",
+    se = "Std. Error",
+    cil = "CI Lower",
+    cih = "CI Upper",
+    sig = "Significant Effect"
   )
+
+ipw_monthly_o40_gt <- ipw_monthly_df %>%
+  filter(Group == "Over 40") %>%
+  gt() %>%
+  tab_header(
+    title = "Monthly IPW Estimates: Over 40",
+    subtitle = "Inverse Probability Weighting (ATE Estimates per Month)"
+  ) %>%
+  fmt_number(columns = c(effect, se, cil, cih, sig), decimals = 3) %>%
+  cols_label(
+    month = "Month",
+    effect = "ATE",
+    se = "Std. Error",
+    cil = "CI Lower",
+    cih = "CI Upper",
+    sig = "Significant Effect"
+  )
+
+ipw_monthly_u40_gt
+ipw_monthly_o40_gt
 ```
+
+
+It seems that the average treatment effect is quite different for those over 40 years old and those under 40 years old, with an average treatment effect of 0.135 and 0.191, respectively. This suggests that the training program had a greater impact on the older age group.
+
+## Question 3
+
 
 ```{r}
 # Plotting results by month by age group
@@ -444,7 +475,7 @@ ggplot(ipw_monthly_all, aes(x = month, y = effect, color = Group, fill = Group))
   )
 ```
 
-The figure would suggest that effect of the program on employment probability increases for both age groups at a similar rate over time up until month five. After month 5, the program has a greater effect for those over 40 years old than those under 40 years old. It is also worth noting that the average treatment effect is positive for each month, indicating that, for each month, the group of program participants had an average employment probability higher than non-participants.
+The figure would suggest that effect of the program on employment probability increases for both age groups at a similar rate over time up until month five. After month 5, the program has a greater effect for those over 40 years old than those under 40 years old. It is also worth noting that the average treatment effect is positive for each month, indicating that, for each month, the group of program participants had an average employment probability higher than non-participants. 
 
 ## Question 4
 
