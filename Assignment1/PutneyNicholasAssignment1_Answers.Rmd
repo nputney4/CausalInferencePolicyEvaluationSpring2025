@@ -1,17 +1,19 @@
 ---
-title: "Causal Inference: Policy Evaluation — Assignment 1"
+title: 'Causal Inference: Policy Evaluation — Assignment 1'
 author: "Your Name"
 date: "2025-03-27"
-output: 
+output:
+  word_document:
+    toc: true
   html_document:
     number_sections: true
     toc: true
     fig_caption: true
-    keep_tex: true         # Optional: keeps LaTeX file for debugging
-    latex_engine: xelatex  # Use if you're using custom fonts or want Unicode
+    keep_tex: true
+    latex_engine: xelatex
     code_folding: true
 fontsize: 11pt
-mainfont: "Times New Roman"  # Optional: works with xelatex
+mainfont: Times New Roman
 ---
 
 ```{r setup, include=FALSE}
@@ -51,6 +53,8 @@ packages_vector <- c("tidyverse",    # package collection for data management
 lapply(packages_vector, require, character.only = TRUE) 
 ```
 
+# This is large
+## This is less large
 
 ```{r}
 setwd("G:/My Drive/SwissTPH/Spring2025ClassesBasel/CausalInferencePolicyEvaluation/04_Small_Assignments/Assignment_1/")
@@ -405,7 +409,10 @@ ipw_monthly_u40_df <- ipw_monthly_u40_df %>%
 ```
 
 ```{r}
-ipw_monthly_u40
+ipw_monthly_u40_df$Group <- "Under 40"
+ipw_monthly_o40_df$Group <- "Over 40"
+ipw_monthly_df <- rbind(ipw_monthly_u40_df, ipw_monthly_o40_df)
+ipw_monthly_df <- ipw_monthly_df %>% dplyr::select(Group, everything())
 ```
 
 
@@ -425,7 +432,7 @@ ipw_monthly_u40_gt <- ipw_monthly_df %>%
     se = "Std. Error",
     cil = "CI Lower",
     cih = "CI Upper",
-    sig = "Significant Effect"
+    sig = "Significant Effects"
   )
 
 ipw_monthly_o40_gt <- ipw_monthly_df %>%
@@ -442,15 +449,13 @@ ipw_monthly_o40_gt <- ipw_monthly_df %>%
     se = "Std. Error",
     cil = "CI Lower",
     cih = "CI Upper",
-    sig = "Significant Effect"
+    sig = "Significant Effects"
   )
 
 ipw_monthly_u40_gt
 ipw_monthly_o40_gt
 ```
 
-
-It seems that the average treatment effect is quite different for those over 40 years old and those under 40 years old, with an average treatment effect of 0.135 and 0.191, respectively. This suggests that the training program had a greater impact on the older age group.
 
 ## Question 3
 
@@ -475,7 +480,9 @@ ggplot(ipw_monthly_all, aes(x = month, y = effect, color = Group, fill = Group))
   )
 ```
 
-The figure would suggest that effect of the program on employment probability increases for both age groups at a similar rate over time up until month five. After month 5, the program has a greater effect for those over 40 years old than those under 40 years old. It is also worth noting that the average treatment effect is positive for each month, indicating that, for each month, the group of program participants had an average employment probability higher than non-participants. 
+The figure would suggest that for the first month, participants in both age groups have a lower probability of employment than non-participants, perhaps due to their participation in the program in that month. The program had a large impact on both groups in the first five to six months, peaking at a change in employment probability by about 40 percentage points. After month 5, the effect of the program begins to decay. However, this decay is greater in the under 40 age group, reflected in a smaller average treatment effect.
+
+The average treatment effect (ATE) is the effect of the program had everyone been treated, even including those who were not treated. The average treatment effect on the treated (ATET) is the effect of the program only on participants. This means that the ATET estimate is only relevant to participants and would not say something about the effect on the program on non-participants. This two quantities could differ if factors related to employment differed systematically between participants and non-participants. For example, the ATET might be higher if those who actually participated in the program are more responsive to the program compared to non-participants had they participated. 
 
 ## Question 4
 
