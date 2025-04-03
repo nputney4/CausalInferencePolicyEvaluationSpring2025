@@ -1,24 +1,19 @@
 ---
 title: 'Causal Inference: Policy Evaluation — Assignment 1'
-author: "Your Name"
-date: "2025-03-27"
+author: "Amit Aryal, Nicholas Putney, Dominik Schawrzkopf"
+date: "2025-04-04"
 output:
+  word_document:
+    toc: false
   pdf_document:
-    toc: false         # saves space by skipping table of contents
+    toc: false
     number_sections: false
     fig_caption: true
-    keep_tex: false
-    latex_engine: xelatex
     df_print: tibble
 fontsize: 11pt
 mainfont: Times New Roman
-geometry: margin=1in
+geometry: margin=0.4in
 ---
-
-# Causal Inference for Policy Evaluation - Assignment 1
-Amit Aryal
-Nicholas Putney
-Dominik Schawrzkopf
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -26,8 +21,10 @@ knitr::opts_chunk$set(
 	message = FALSE,
 	warning = FALSE,
 	fig.align = "center",  # Optional: center figures
-	out.width = "90%"      # Optional: scale figure size for space
-)
+	out.width = "80%",      # Optional: scale figure size for space
+	fig.height = 3,
+	fig.width = 6
+	)
 ```
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
@@ -52,7 +49,9 @@ packages_vector <- c("tidyverse",    # package collection for data management
                       "mfx",         # marginal effects for nonlinear models, e.g. probit 
                       "ggplot2",
                      "causalweight",
-                     "gt")     # plots and graphs 
+                     "gt",
+                     "patchwork",
+                     "flextable")     # plots and graphs 
                      
 # Uncomment the following line the first time you use these packages to install them
 # install.packages(packages_vector)
@@ -61,9 +60,8 @@ lapply(packages_vector, require, character.only = TRUE)
 
 
 ```{r include=FALSE}
-setwd("G:/My Drive/SwissTPH/Spring2025ClassesBasel/CausalInferencePolicyEvaluation/04_Small_Assignments/Assignment_1/")
 # Loading given dataset
-load("Assignment_1.RData")
+load("G:/My Drive/SwissTPH/Spring2025ClassesBasel/CausalInferencePolicyEvaluation/04_Small_Assignments/Assignment_1/Assignment_1.RData")
 ```
 
 ```{r}
@@ -72,9 +70,8 @@ load("Assignment_1.RData")
 
 ## Question 1
 
-Creating a dummy variable indicating if someone is under 40 years old
-
 ```{r include=FALSE}
+# Creating a dummy variable indicating if someone is under 40 years old
 
 # Getting an idea of current variables
 raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% head()
@@ -89,20 +86,26 @@ raw.data$under_40yo <- ifelse(rowSums(raw.data[c("agegr_3", "agegr_4")]) == 0, 1
 raw.data[c("agegr_2", "agegr_3", "agegr_4", "under_40yo")] %>% head()
 ```
 
-Examining the balance of this dummy variable across treatment groups
-```{r include=FALSE}
-cro(raw.data$treat, raw.data$under_40yo)
-cro_cpct_responses(raw.data$under_40yo, raw.data$treat)
-cro_cpct_responses(raw.data$treat, raw.data$under_40yo)
+```{r}
+# Examining the balance of this dummy variable across treatment groups
+#cro(raw.data$treat, raw.data$under_40yo)
+#cro_cpct_responses(raw.data$under_40yo, raw.data$treat)
+#cro_cpct_responses(raw.data$treat, raw.data$under_40yo)
 ```
 
-```{r include=FALSE}
+```{r}
 attach(raw.data)
 ```
 
 
-Calculating the standardize bias and difference in means
-```{r include=FALSE}
+```{r}
+# Calculating the standardize bias and difference in means
+
+# a selection of controls
+x_desc <- cbind(under_40yo)
+x_desc_names <- colnames(x_desc)
+
+# Define a function estimating the differences in variables across D
 balance_check.model <- function(x){
   
   # Conditional means
@@ -118,7 +121,7 @@ balance_check.model <- function(x){
   cov <- vcovHC(diff_d, type = "HC")
   robust.se <- sqrt(diag(cov))
   
-  # Absolute standardized bias
+  # Absolute standardized bias (difference in means over average std dev - assuming similar size of the groups)
   sb <- abs((mean_d1-mean_d0)/sqrt((var_d0+var_d1)/2))*100
   
   # Store output as a list 
@@ -130,18 +133,41 @@ balance_check.model <- function(x){
        SB = sb)             
 }
 
-balance_check.model(raw.data$under_40yo)
+# Apply to selection of covariates (MARGIN = 2 to loop over columns)
+diff_output <- apply(X = x_desc, MARGIN = 2, FUN = balance_check.model)
+# Convert output in list format into a data frame 
+diff_output<-as.data.frame(rbindlist(diff_output))
+
+# Add number of observations (don't forget the comma!)
+raw.data$treat <- as.vector(raw.data$treat)
+obs <- c(nrow(raw.data[raw.data$treat==0,]), 
+         nrow(raw.data[raw.data$treat==1,]), 
+         NA, NA, NA, NA)
+diff_output <- rbind(diff_output, obs)
+
+# Display in desired format
+rownames(diff_output)<- c(x_desc_names, "Observations")
+colnames(diff_output)<- c("E(X|D=0)", "E(X|D=1)", "Difference", "s.e.", 
+                          "p-value", "Abs. SB")
+print("Difference in means by treatment status and standardized bias")
+print(round(diff_output,digits = 3))
 ```
 
-The simple comparison of balance across groups reveals that the probability of being treated (i.e. being a participant) is comparable between those under the age of 40 and those 40 years old or older, with 45% of those under 40 being a participant and 46.3% of those 40 years old or older being a participant. The difference in means statistical test evaluated the null hypothesis that those under 40 year old contains have the same probability of being treated as those over 40 years old. The p-value of 0.073 suggests that is not enough evidence to reject the null, (assuming we decided on a 5% significance level a priori) i.e. there is not enough evidence to conclude that the two groups have a different probability of being treated.
+The dummy variable under_40yo seems well balanced between treatment and control groups, with low standardized bias (2.6%) and an insignificant difference in means at the 5% significance level.
 
-I would say it is not so straightforward to decide whether or not it should be included. Strictly speaking, in terms of causal effect identification, it is not necessary to include if it does not influence the probability of being treated, even if it is associated with the outcome. However, including the variable could improve the precision of the estimate, especially if it is a strong predictor of the outcome. 
+We should still account for age differences in our analysis due to:
 
-It is perhaps even more complicated because the question precisely asks if we should `account for age differences'. If this is taken to ask if we should account for age differences more generally, the answer might change. Here we have calculated an age variable that is dichotomizing a continuous (or discrete...) quantity. It could be the case that an age variable defined in a different manner could be predictive of treatment status, indicating that it should be included.
+1. Heterogeneity: Age might moderate treatment effects (e.g., younger vs older participants respond differently), so including it enables subgroup or interaction analysis. 
+
+2. Robustness: Including covariates that are predictors of the outcome of interest protects against chance imbalances or unobserved heterogeneity in smaller subgroups.
+
+3. Improved precision: if age group is a good predictor of employment status, then including it in the analysis will lead to a decrease mean squared error, leading to smaller standard errors for the ATE estimate. 
+
 
 ## Question 2
-### (a)
-```{r include=FALSE}
+### (a) see R script
+
+```{r}
 # Set the horizon
 maxdur <- 24
 
@@ -164,13 +190,14 @@ for (i in 1:maxdur) {
 # Convert to data frame and combine with original data
 emp <- as.data.frame(emp)
 raw.data <- cbind(raw.data, emp)
+
 ```
 
 
 ```{r include=FALSE}
 # Create the outcome variable - "monthly employment probability"
 
-raw.data[c("id", "idobs", "date_start", "date_end", "treat", paste0("emp_", 1:24))]
+raw.data[c("id", "idobs", "date_start", "date_end", "treat", paste0("emp_", 1:24))] %>% head()
 raw.data$month_employ_prob <- raw.data %>% dplyr::select(paste0("emp_", 1:24)) %>% rowMeans()
 ```
 
@@ -191,9 +218,9 @@ hist(subset(as.numeric(raw.data$duration), treat == 1), xlab = "days", main = "L
 ```
 
 
-### (b)
+### (b)  see R script
 
-```{r include=FALSE}
+```{r}
 # Splitting data into under 40 years old and over 40 years old
 data_u40 <- raw.data %>% filter(under_40yo == 1)
 data_o40 <- raw.data %>% filter(under_40yo == 0)
@@ -229,17 +256,17 @@ summary(data_o40$pscore)
 
 ```
 
-```{r}
+```{r include=FALSE}
 # Create a factor variable for treatment status for the plot
 data_u40$treat_f <- factor(treat_u40, 
                            levels = c(0,1), 
                            label = c("D=0", "D=1")) 
 
 # Density plot for the propensity score by treatment status
-ggplot(data_u40, aes(x = pscore, fill = treat_f)) + 
+p_plot1 <- ggplot(data_u40, aes(x = pscore, fill = treat_f)) + 
     geom_density(alpha=0.4) + 
     scale_fill_grey()+ 
-    theme_bw(base_size = 20) +
+    theme_bw(base_size = 8) +
     xlim(0, 1) + ggtitle("P-scores for under 40 years of age")
 
 
@@ -249,11 +276,14 @@ data_o40$treat_f <- factor(treat_o40,
                            label = c("D=0", "D=1")) 
 
 # Density plot for the propensity score by treatment status
-ggplot(data_o40, aes(x = pscore, fill = treat_f)) + 
+p_plot2 <- ggplot(data_o40, aes(x = pscore, fill = treat_f)) + 
     geom_density(alpha=0.4) + 
     scale_fill_grey()+ 
-    theme_bw(base_size = 20) +
+    theme_bw(base_size = 8) +
     xlim(0, 1) + ggtitle("P-scores for over 40 years of age")
+
+# Combine plots
+p_plot1 + p_plot2 + plot_layout(ncol = 2)
 
 ```
 
@@ -288,36 +318,44 @@ data_o40_trimmed <- trim_pscores(data_o40)
 ```
 
 
-```{r}
+```{r include=FALSE}
 # Only 1 observation removed from each
 nrow(data_u40) - nrow(data_u40_trimmed)
 nrow(data_o40) - nrow(data_o40_trimmed)
 
 ```
 
-```{r}
+```{r include=FALSE}
 # Checking for aligment
 min(data_u40_trimmed$pscore[data_u40_trimmed$treat == 1])
 max(data_u40_trimmed$pscore[data_u40_trimmed$treat == 1])
 
 min(data_u40_trimmed$pscore[data_u40_trimmed$treat == 0])
 max(data_u40_trimmed$pscore[data_u40_trimmed$treat == 0])
+```
 
+
+```{r include=FALSE}
 # Density plot for the propensity score by treatment status
-ggplot(data_u40_trimmed, aes(x = pscore, fill = treat_f)) + 
+p_plot3 <- ggplot(data_u40_trimmed, aes(x = pscore, fill = treat_f)) + 
     geom_density(alpha=0.4) + 
     scale_fill_grey()+ 
-    theme_bw(base_size = 20) +
+    theme_bw(base_size = 8) +
     xlim(0, 1) + ggtitle("P-scores for under 40 years of age - Trimmed")
 
 # Density plot for the propensity score by treatment status
-ggplot(data_o40_trimmed, aes(x = pscore, fill = treat_f)) + 
+p_plot4 <- ggplot(data_o40_trimmed, aes(x = pscore, fill = treat_f)) + 
     geom_density(alpha=0.4) + 
     scale_fill_grey()+ 
-    theme_bw(base_size = 20) +
+    theme_bw(base_size = 8) +
     xlim(0, 1) + ggtitle("P-scores for over 40 years of age - Trimmed")
+
+p_plot3 + p_plot4 + plot_layout(ncol = 2)
 ```
+
 ### (c)
+
+
 ```{r}
 # Define the outcome - "monthly employment probability"
 y1_u40 <- data_u40_trimmed$month_employ_prob 
@@ -327,12 +365,10 @@ x_o40 <- as.matrix(data_o40_trimmed[covs])
 treat_u40 <- data_u40_trimmed$treat
 treat_o40 <- data_o40_trimmed$treat
 
-x_u40
-
 ```
 
 ```{r include=FALSE}
-s_boot <- 5
+s_boot <- 100
 length(y1_u40) == length(treat_u40) 
 length(y1_u40) == dim(x_u40)[1]
 
@@ -426,45 +462,72 @@ ipw_monthly_u40_gt <- ipw_monthly_df %>%
   filter(Group == "Under 40") %>%
   gt() %>%
   tab_header(
-    title = "Monthly IPW Estimates: Under 40",
-    subtitle = "Inverse Probability Weighting (ATE Estimates per Month)"
+    title = "Monthly ATE Estimates: Under 40",
+    subtitle = "Inverse Probability Weighting"
   ) %>%
   fmt_number(columns = c(effect, se, cil, cih, sig), decimals = 3) %>%
   cols_label(
     month = "Month",
     effect = "ATE",
-    se = "Std. Error",
-    cil = "CI Lower",
-    cih = "CI Upper",
-    sig = "Significant Effects"
+    se = "SE",
+    cil = "CI Low",
+    cih = "CI High",
+    sig = "Sig Eff"
   )
 
 ipw_monthly_o40_gt <- ipw_monthly_df %>%
   filter(Group == "Over 40") %>%
   gt() %>%
   tab_header(
-    title = "Monthly IPW Estimates: Over 40",
-    subtitle = "Inverse Probability Weighting (ATE Estimates per Month)"
+    title = "Monthly ATE Estimates: Over 40",
+    subtitle = "Inverse Probability Weighting"
   ) %>%
   fmt_number(columns = c(effect, se, cil, cih, sig), decimals = 3) %>%
   cols_label(
     month = "Month",
     effect = "ATE",
-    se = "Std. Error",
-    cil = "CI Lower",
-    cih = "CI Upper",
-    sig = "Significant Effects"
+    se = "SE",
+    cil = "CI Low",
+    cih = "CI High",
+    sig = "Sig Eff"
   )
 
-ipw_monthly_u40_gt
-ipw_monthly_o40_gt
+
+ipw_monthly_u40_gt <- ipw_monthly_u40_gt %>%
+  opt_table_font(font = list(gt::google_font("Arial"))) %>%  # optional font
+  tab_options(
+    table.font.size = px(7),       # smaller font
+    data_row.padding = px(1),       # less vertical padding
+    heading.title.font.size = px(11),
+    heading.subtitle.font.size = px(10)
+  )
+
+ipw_monthly_o40_gt <- ipw_monthly_o40_gt %>%
+  opt_table_font(font = list(gt::google_font("Arial"))) %>%
+  tab_options(
+    table.font.size = px(7),
+    data_row.padding = px(1),
+    heading.title.font.size = px(11),
+    heading.subtitle.font.size = px(10)
+  )
+
+ft_u40 <- flextable(ipw_monthly_u40_df)
+ft_o40 <- flextable(ipw_monthly_o40_df)
+```
+
+
+```{r, fig.show='hold', out.width = "45%"}
+gt::gtsave(ipw_monthly_u40_gt, "u40_table.png")
+gt::gtsave(ipw_monthly_o40_gt, "o40_table.png")
+knitr::include_graphics("u40_table.png")
+knitr::include_graphics("o40_table.png")
 ```
 
 
 ## Question 3
 
 
-```{r}
+```{r, out.width = "90%"}
 # Plotting results by month by age group
 ipw_monthly_u40_df$Group <- "Under 40"
 ipw_monthly_o40_df$Group <- "Over 40"
@@ -476,7 +539,7 @@ ggplot(ipw_monthly_all, aes(x = month, y = effect, color = Group, fill = Group))
   geom_ribbon(aes(ymin = cil, ymax = cih), alpha = 0.2, color = NA) +
   geom_point(aes(y = sig), shape = 18, size = 3) +
   geom_hline(yintercept = 0, linetype = "dashed") +
-  theme_bw(base_size = 18) +
+  theme_bw(base_size = 10) +
   labs(
     title = "Monthly ATEs on Employment Probability by Age Group",
     x = "Months after program start",
@@ -489,5 +552,22 @@ The figure would suggest that for the first month, participants in both age grou
 The average treatment effect (ATE) is the effect of the program had everyone been treated, even including those who were not treated. The average treatment effect on the treated (ATET) is the effect of the program only on participants. This means that the ATET estimate is only relevant to participants and would not say something about the effect on the program on non-participants. This two quantities could differ if factors related to employment differed systematically between participants and non-participants. For example, the ATET might be higher if those who actually participated in the program are more responsive to the program compared to non-participants had they participated. 
 
 ## Question 4
+### (a)
+In the case where jobseekers who participate in the online application program are more likely to get a job but at the expense of other unemployed workers, we should not compare program participants to non-participants to estimate the ATE(T), because these estimates would be biased. We would in this case overestimate the treatment effect of the online application program.  
 
-See other document
+### (b)
+In this case, the Stable Unit Treatment Value Assumption (SUTVA) would be violated due to general equilibrium effects in the labor market.
+
+### (c)
+Other violations of SUTVA could be spillover effects from treated to untreated (e.g. when participants would share their gained knowledge from the program with non-participants). Here the bias would be an underestimation of the treatment effect.
+
+## Question 5
+The control and treatment groups are defined by the difference in distance between their location and the backbone network. Treatment groups are defined as individuals living less than 500m away from the network (T1), 500-1500m away (T2), 1500-2500m (T3) and 2500m-3000m (T4). The control group contains individuals located more than 3500m from the backbone network. The post-treatment period (t) is defined as at least one submarine cable has arrived in the country at time (t). The pre-treatment period as no submarine cable has arrived at time (t).
+
+## Question 6
+### (a)
+The authors do not control for individual fixed effects due to the nature of the available data. DHS and Afrobarometer are cross-sectional and not longitudinal. Therefore it is not feasible to incorporate individual fixed effects. 
+
+### (b)
+It would not be a good idea to control for location-specific time period fixed effects, because the treatment varies across locations over time, which is exactly the variation those fixed effects would absorb.
+

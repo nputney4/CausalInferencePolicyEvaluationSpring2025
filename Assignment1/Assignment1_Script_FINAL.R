@@ -1,39 +1,16 @@
----
-title: 'Causal Inference: Policy Evaluation — Assignment 1'
-author: "Your Name"
-date: "2025-03-27"
-output:
-  pdf_document:
-    toc: false         # saves space by skipping table of contents
-    number_sections: false
-    fig_caption: true
-    keep_tex: false
-    latex_engine: xelatex
-    df_print: tibble
-fontsize: 11pt
-mainfont: Times New Roman
-geometry: margin=1in
----
+###############################################################
+## -- Causal Inference: Policy Evaluation — Assignment 1' -- ##
+###############################################################
 
-# Causal Inference for Policy Evaluation - Assignment 1
-Amit Aryal
-Nicholas Putney
-Dominik Schawrzkopf
+########################################################
+# Authors:                                            ##
+## - Amit Aryal, Nicholas Putney, Dominik Schawrzkopf ##
+########################################################
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-	echo = FALSE,   # Hides code
-	message = FALSE,
-	warning = FALSE,
-	fig.align = "center",  # Optional: center figures
-	out.width = "90%"      # Optional: scale figure size for space
-)
-```
 
-```{r message=FALSE, warning=FALSE, include=FALSE}
 # Define packages that you need
-packages_vector <- c("tidyverse",    # package collection for data management 
-                      "dplyr",       # set of functions to work with data 
+packages_vector <- c("tidyverse",    # package collection for data management
+                      "dplyr",       # set of functions to work with data
                       "foreign",     # loading data (e.g. data from old Stata versions)
                       "haven",       # loading data (e.g. data from newer Stata versions)
                       "knitr",       # integrates computing and reporting
@@ -46,35 +23,24 @@ packages_vector <- c("tidyverse",    # package collection for data management
                       "data.table",  # tables
                       "stargazer",   # tables
                       "xtable",      # tables
-                      "expss",       # tables, labels 
+                      "expss",       # tables, labels
                       "sjlabelled",  # labels
                       "lubridate",   # dates
-                      "mfx",         # marginal effects for nonlinear models, e.g. probit 
+                      "mfx",         # marginal effects for nonlinear models, e.g. probit
                       "ggplot2",
                      "causalweight",
-                     "gt")     # plots and graphs 
-                     
-# Uncomment the following line the first time you use these packages to install them
-# install.packages(packages_vector)
-lapply(packages_vector, require, character.only = TRUE) 
-```
+                     "gt")     # plots and graphs
 
+lapply(packages_vector, require, character.only = TRUE)
 
-```{r include=FALSE}
-setwd("G:/My Drive/SwissTPH/Spring2025ClassesBasel/CausalInferencePolicyEvaluation/04_Small_Assignments/Assignment_1/")
 # Loading given dataset
-load("Assignment_1.RData")
-```
+load("G:/My Drive/SwissTPH/Spring2025ClassesBasel/CausalInferencePolicyEvaluation/04_Small_Assignments/Assignment_1/Assignment_1.RData")
 
-```{r}
-#glimpse(raw.data)
-```
+glimpse(raw.data)
 
 ## Question 1
 
-Creating a dummy variable indicating if someone is under 40 years old
-
-```{r include=FALSE}
+# Creating a dummy variable indicating if someone is under 40 years old
 
 # Getting an idea of current variables
 raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% head()
@@ -87,61 +53,70 @@ raw.data$under_40yo <- ifelse(rowSums(raw.data[c("agegr_3", "agegr_4")]) == 0, 1
 
 # Getting an idea of current variables
 raw.data[c("agegr_2", "agegr_3", "agegr_4", "under_40yo")] %>% head()
-```
 
-Examining the balance of this dummy variable across treatment groups
-```{r include=FALSE}
+# Examining the balance of this dummy variable across treatment groups
 cro(raw.data$treat, raw.data$under_40yo)
 cro_cpct_responses(raw.data$under_40yo, raw.data$treat)
 cro_cpct_responses(raw.data$treat, raw.data$under_40yo)
-```
 
-```{r include=FALSE}
 attach(raw.data)
-```
 
+# Calculating the standardize bias and difference in means
 
-Calculating the standardize bias and difference in means
-```{r include=FALSE}
+# a selection of controls
+x_desc <- cbind(under_40yo)
+x_desc_names <- colnames(x_desc)
+
+# Define a function estimating the differences in variables across D
 balance_check.model <- function(x){
-  
+
   # Conditional means
   mean_d0 <- mean(x[treat==0])
   mean_d1 <- mean(x[treat==1])
-  
+
   # Variances in subsamples
   var_d0 <- var(x[treat==0])
   var_d1 <- var(x[treat==1])
-  
+
   # Difference in means
   diff_d <- lm(x ~ treat)
   cov <- vcovHC(diff_d, type = "HC")
   robust.se <- sqrt(diag(cov))
-  
-  # Absolute standardized bias
+
+  # Absolute standardized bias (difference in means over average std dev - assuming similar size of the groups)
   sb <- abs((mean_d1-mean_d0)/sqrt((var_d0+var_d1)/2))*100
-  
-  # Store output as a list 
-  list(mean_d0 = mean_d0, 
+
+  # Store output as a list
+  list(mean_d0 = mean_d0,
        mean_d1 = mean_d1,
-       diff_d = diff_d$coefficients[2], 
-       robust.se = robust.se[2], 
+       diff_d = diff_d$coefficients[2],
+       robust.se = robust.se[2],
        pval = 2*pnorm(-abs(diff_d$coefficients[2]/robust.se[2])),
-       SB = sb)             
+       SB = sb)
 }
 
-balance_check.model(raw.data$under_40yo)
-```
+# Apply to selection of covariates (MARGIN = 2 to loop over columns)
+diff_output <- apply(X = x_desc, MARGIN = 2, FUN = balance_check.model)
+# Convert output in list format into a data frame
+diff_output<-as.data.frame(rbindlist(diff_output))
 
-The simple comparison of balance across groups reveals that the probability of being treated (i.e. being a participant) is comparable between those under the age of 40 and those 40 years old or older, with 45% of those under 40 being a participant and 46.3% of those 40 years old or older being a participant. The difference in means statistical test evaluated the null hypothesis that those under 40 year old contains have the same probability of being treated as those over 40 years old. The p-value of 0.073 suggests that is not enough evidence to reject the null, (assuming we decided on a 5% significance level a priori) i.e. there is not enough evidence to conclude that the two groups have a different probability of being treated.
+# Add number of observations (don't forget the comma!)
+raw.data$treat <- as.vector(raw.data$treat)
+obs <- c(nrow(raw.data[raw.data$treat==0,]),
+         nrow(raw.data[raw.data$treat==1,]),
+         NA, NA, NA, NA)
+diff_output <- rbind(diff_output, obs)
 
-I would say it is not so straightforward to decide whether or not it should be included. Strictly speaking, in terms of causal effect identification, it is not necessary to include if it does not influence the probability of being treated, even if it is associated with the outcome. However, including the variable could improve the precision of the estimate, especially if it is a strong predictor of the outcome. 
+# Display in desired format
+rownames(diff_output)<- c(x_desc_names, "Observations")
+colnames(diff_output)<- c("E(X|D=0)", "E(X|D=1)", "Difference", "s.e.",
+                          "p-value", "Abs. SB")
+print("Difference in means by treatment status and standardized bias")
+print(round(diff_output,digits = 3))
 
-It is perhaps even more complicated because the question precisely asks if we should `account for age differences'. If this is taken to ask if we should account for age differences more generally, the answer might change. Here we have calculated an age variable that is dichotomizing a continuous (or discrete...) quantity. It could be the case that an age variable defined in a different manner could be predictive of treatment status, indicating that it should be included.
+# Dummy variable under_40yo seems well balanced between treatment and control groups
 
-## Question 2
-### (a)
-```{r include=FALSE}
+# Question 2a
 # Set the horizon
 maxdur <- 24
 
@@ -164,36 +139,25 @@ for (i in 1:maxdur) {
 # Convert to data frame and combine with original data
 emp <- as.data.frame(emp)
 raw.data <- cbind(raw.data, emp)
-```
 
-
-```{r include=FALSE}
 # Create the outcome variable - "monthly employment probability"
 
-raw.data[c("id", "idobs", "date_start", "date_end", "treat", paste0("emp_", 1:24))]
+raw.data[c("id", "idobs", "date_start", "date_end", "treat", paste0("emp_", 1:24))] %>% head()
 raw.data$month_employ_prob <- raw.data %>% dplyr::select(paste0("emp_", 1:24)) %>% rowMeans()
-```
 
-
-```{r include=FALSE}
 # Inspect distribution of monthly employment probability (for each spell)
 hist(raw.data$month_employ_prob, main = "Monthly Employment Probability", xlab = "Probability")
 hist(subset(raw.data$month_employ_prob, treat == 0), main = "Monthly Employment Probability - Untreated", xlab = "Probability")
 hist(subset(raw.data$month_employ_prob, treat == 1), main = "Monthly Employment Probability - Treated", xlab = "Probability")
-```
 
-```{r include=FALSE}
 # Sanity check for employment duration length
 raw.data$duration <- raw.data$date_end - raw.data$date_start
 hist(as.numeric(raw.data$duration), xlab = "days", main = "Length of Unemployment Spells")
 hist(subset(as.numeric(raw.data$duration), treat == 0), xlab = "days", main = "Length of Unemployment Spells - Untreated")
 hist(subset(as.numeric(raw.data$duration), treat == 1), xlab = "days", main = "Length of Unemployment Spells - Treated")
-```
 
+# Question 2b
 
-### (b)
-
-```{r include=FALSE}
 # Splitting data into under 40 years old and over 40 years old
 data_u40 <- raw.data %>% filter(under_40yo == 1)
 data_o40 <- raw.data %>% filter(under_40yo == 0)
@@ -201,16 +165,12 @@ data_o40 <- raw.data %>% filter(under_40yo == 0)
 treat_u40 <- data_u40$treat
 treat_o40 <- data_o40$treat
 
-x_u40 <- as.matrix(dplyr::select(data_u40, 
+x_u40 <- as.matrix(dplyr::select(data_u40,
                               covs))
-x_o40 <- as.matrix(dplyr::select(data_o40, 
+x_o40 <- as.matrix(dplyr::select(data_o40,
                               covs))
 x_names <- colnames(x_u40)
 
-```
-
-
-```{r include=FALSE}
 # Estimate the p-score model for under 40
 pscore.model_u40 <- glm(treat_u40 ~ x_u40, family = binomial(link = "probit"))
 summ(pscore.model_u40, robust = "HC1")
@@ -218,47 +178,38 @@ summ(pscore.model_u40, robust = "HC1")
 # Estimate the p-score model for over 40
 pscore.model_o40 <- glm(treat_o40 ~ x_o40, family = binomial(link = "probit"))
 summ(pscore.model_o40, robust = "HC1")
-```
 
-```{r include=FALSE}
-data_u40$pscore <- pscore.model_u40$fitted.values 
+data_u40$pscore <- pscore.model_u40$fitted.values
 summary(data_u40$pscore)
 
-data_o40$pscore <- pscore.model_o40$fitted.values 
+data_o40$pscore <- pscore.model_o40$fitted.values
 summary(data_o40$pscore)
 
-```
-
-```{r}
 # Create a factor variable for treatment status for the plot
-data_u40$treat_f <- factor(treat_u40, 
-                           levels = c(0,1), 
-                           label = c("D=0", "D=1")) 
+data_u40$treat_f <- factor(treat_u40,
+                           levels = c(0,1),
+                           label = c("D=0", "D=1"))
 
 # Density plot for the propensity score by treatment status
-ggplot(data_u40, aes(x = pscore, fill = treat_f)) + 
-    geom_density(alpha=0.4) + 
-    scale_fill_grey()+ 
+ggplot(data_u40, aes(x = pscore, fill = treat_f)) +
+    geom_density(alpha=0.4) +
+    scale_fill_grey()+
     theme_bw(base_size = 20) +
     xlim(0, 1) + ggtitle("P-scores for under 40 years of age")
 
 
 # Create a factor variable for treatment status for the plot
-data_o40$treat_f <- factor(treat_o40, 
-                           levels = c(0,1), 
-                           label = c("D=0", "D=1")) 
+data_o40$treat_f <- factor(treat_o40,
+                           levels = c(0,1),
+                           label = c("D=0", "D=1"))
 
 # Density plot for the propensity score by treatment status
-ggplot(data_o40, aes(x = pscore, fill = treat_f)) + 
-    geom_density(alpha=0.4) + 
-    scale_fill_grey()+ 
+ggplot(data_o40, aes(x = pscore, fill = treat_f)) +
+    geom_density(alpha=0.4) +
+    scale_fill_grey()+
     theme_bw(base_size = 20) +
     xlim(0, 1) + ggtitle("P-scores for over 40 years of age")
 
-```
-
-
-```{r include=FALSE}
 # As it is the ATE, the min and max pscores for both treated and not treated should be similar - i.e. "common support"
 min(data_u40$pscore[data_u40$treat == 1])
 max(data_u40$pscore[data_u40$treat == 1])
@@ -276,7 +227,7 @@ trim_pscores <- function(data) {
   # Define common support
   min_overlap <- max(treated_min, control_min)
   max_overlap <- min(treated_max, control_max)
-  
+
   # Trim the dataset
   trimmed_data <- data[data$pscore >= min_overlap & data$pscore <= max_overlap, ]
 
@@ -285,17 +236,11 @@ trim_pscores <- function(data) {
 
 data_u40_trimmed <- trim_pscores(data_u40)
 data_o40_trimmed <- trim_pscores(data_o40)
-```
 
-
-```{r}
 # Only 1 observation removed from each
 nrow(data_u40) - nrow(data_u40_trimmed)
 nrow(data_o40) - nrow(data_o40_trimmed)
 
-```
-
-```{r}
 # Checking for aligment
 min(data_u40_trimmed$pscore[data_u40_trimmed$treat == 1])
 max(data_u40_trimmed$pscore[data_u40_trimmed$treat == 1])
@@ -304,71 +249,45 @@ min(data_u40_trimmed$pscore[data_u40_trimmed$treat == 0])
 max(data_u40_trimmed$pscore[data_u40_trimmed$treat == 0])
 
 # Density plot for the propensity score by treatment status
-ggplot(data_u40_trimmed, aes(x = pscore, fill = treat_f)) + 
-    geom_density(alpha=0.4) + 
-    scale_fill_grey()+ 
+ggplot(data_u40_trimmed, aes(x = pscore, fill = treat_f)) +
+    geom_density(alpha=0.4) +
+    scale_fill_grey()+
     theme_bw(base_size = 20) +
     xlim(0, 1) + ggtitle("P-scores for under 40 years of age - Trimmed")
 
 # Density plot for the propensity score by treatment status
-ggplot(data_o40_trimmed, aes(x = pscore, fill = treat_f)) + 
-    geom_density(alpha=0.4) + 
-    scale_fill_grey()+ 
+ggplot(data_o40_trimmed, aes(x = pscore, fill = treat_f)) +
+    geom_density(alpha=0.4) +
+    scale_fill_grey()+
     theme_bw(base_size = 20) +
     xlim(0, 1) + ggtitle("P-scores for over 40 years of age - Trimmed")
-```
-### (c)
-```{r}
+
+# Question 2c
 # Define the outcome - "monthly employment probability"
-y1_u40 <- data_u40_trimmed$month_employ_prob 
+y1_u40 <- data_u40_trimmed$month_employ_prob
 y1_o40 <- data_o40_trimmed$month_employ_prob
 x_u40 <- as.matrix(data_u40_trimmed[covs])
 x_o40 <- as.matrix(data_o40_trimmed[covs])
 treat_u40 <- data_u40_trimmed$treat
 treat_o40 <- data_o40_trimmed$treat
 
-x_u40
-
-```
-
-```{r include=FALSE}
-s_boot <- 5
-length(y1_u40) == length(treat_u40) 
+s_boot <- 100
+length(y1_u40) == length(treat_u40)
 length(y1_u40) == dim(x_u40)[1]
 
 length(y1_o40) == length(treat_o40)
 length(y1_o40) == dim(x_o40)[[1]]
 
-# # Estimating the ATE 
-# # IPW - Estimating the ATET based on the causalweight package
-# ipw_ate_u40 <- treatweight(y = y1_u40, # take initial data 
-#                         d = treat_u40, 
-#                         x = x_u40, 
-#                         ATET = FALSE, # if = FALSE, estimates ATE (default)
-#                         trim = 0.0, # data was already trimmed previously
-#                         boot = s_boot) # number of bootstrap replications
-# 
-# ipw_ate_o40 <- treatweight(y = y1_o40, # take initial data 
-#                         d = treat_o40, 
-#                         x = x_o40, 
-#                         ATET = FALSE, # if = FALSE, estimates ATE (default)
-#                         trim = 0.0, # data was already trimmed previously
-#                         boot = s_boot) # number of bootstrap replications
-```
+# Estimating the ATE
 
-
-```{r}
 # Create function to do IPW for each month
 reg_monthly_ipw <- function(y, d, x) {
   ipw <- treatweight(y = y, d = d, x = x, ATET = FALSE, trim = 0, boot = s_boot)
   list(effect = ipw$effect, se = ipw$se)
 }
-```
 
 
-
-```{r}
-### For over 40 years of age
+# For over 40 years of age
 
 # Create a matrix for employment status for each month
 emp_o40 <- data_o40_trimmed %>% dplyr::select(colnames(emp)) %>% as.matrix()
@@ -387,11 +306,8 @@ ipw_monthly_o40_df <- ipw_monthly_o40_df %>%
     cih = effect + 1.96 * se,
     sig = ifelse(abs(effect / se) > 1.64, effect, NA)
   )
-```
 
-
-```{r}
-### For under 40 years of age
+# For under 40 years of age
 
 # Create a matrix for employment status for each month
 emp_u40 <- data_u40_trimmed %>% dplyr::select(colnames(emp)) %>% as.matrix()
@@ -410,17 +326,12 @@ ipw_monthly_u40_df <- ipw_monthly_u40_df %>%
     cih = effect + 1.96 * se,
     sig = ifelse(abs(effect / se) > 1.64, effect, NA)
   )
-```
 
-```{r}
 ipw_monthly_u40_df$Group <- "Under 40"
 ipw_monthly_o40_df$Group <- "Over 40"
 ipw_monthly_df <- rbind(ipw_monthly_u40_df, ipw_monthly_o40_df)
 ipw_monthly_df <- ipw_monthly_df %>% dplyr::select(Group, everything())
-```
 
-
-```{r}
 # Create tables by group
 ipw_monthly_u40_gt <- ipw_monthly_df %>%
   filter(Group == "Under 40") %>%
@@ -458,18 +369,13 @@ ipw_monthly_o40_gt <- ipw_monthly_df %>%
 
 ipw_monthly_u40_gt
 ipw_monthly_o40_gt
-```
-
 
 ## Question 3
 
-
-```{r}
 # Plotting results by month by age group
 ipw_monthly_u40_df$Group <- "Under 40"
 ipw_monthly_o40_df$Group <- "Over 40"
 ipw_monthly_all <- bind_rows(ipw_monthly_u40_df, ipw_monthly_o40_df)
-
 
 ggplot(ipw_monthly_all, aes(x = month, y = effect, color = Group, fill = Group)) +
   geom_line(size = 1) +
@@ -482,12 +388,4 @@ ggplot(ipw_monthly_all, aes(x = month, y = effect, color = Group, fill = Group))
     x = "Months after program start",
     y = "Average Treatment Effect"
   )
-```
 
-The figure would suggest that for the first month, participants in both age groups have a lower probability of employment than non-participants, perhaps due to their participation in the program in that month. The program had a large impact on both groups in the first five to six months, peaking at a change in employment probability by about 40 percentage points. After month 5, the effect of the program begins to decay. However, this decay is greater in the under 40 age group, reflected in a smaller average treatment effect.
-
-The average treatment effect (ATE) is the effect of the program had everyone been treated, even including those who were not treated. The average treatment effect on the treated (ATET) is the effect of the program only on participants. This means that the ATET estimate is only relevant to participants and would not say something about the effect on the program on non-participants. This two quantities could differ if factors related to employment differed systematically between participants and non-participants. For example, the ATET might be higher if those who actually participated in the program are more responsive to the program compared to non-participants had they participated. 
-
-## Question 4
-
-See other document
