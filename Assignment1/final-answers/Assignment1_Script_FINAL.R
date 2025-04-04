@@ -98,7 +98,7 @@ balance_check.model <- function(x){
 diff_output <- apply(X = x_desc, MARGIN = 2, FUN = balance_check.model)
 
 # Convert output in list format into a data frame
-diff_output <-as.data.frame(rbindlist(diff_output))
+diff_output <- as.data.frame(rbindlist(diff_output))
 
 # Add number of observations (don't forget the comma!)
 raw.data$treat <- as.vector(raw.data$treat)
@@ -145,8 +145,7 @@ diff_output_gt <- diff_output %>%
     heading.subtitle.font.size = "small"
   )
 
-# Display the table
-diff_output_gt
+gtsave(diff_output_gt, "balance_check_table.pdf")
 
 # Dummy variable under_40yo seems well balanced between treatment and control groups
 
@@ -412,8 +411,6 @@ ipw_monthly_o40_gt
 
 gtsave(ipw_monthly_u40_gt, "ipw_under40_table.pdf")
 gtsave(ipw_monthly_o40_gt, "ipw_over40_table.pdf")
-
-
 ## Question 3
 
 # Plotting results by month by age group
