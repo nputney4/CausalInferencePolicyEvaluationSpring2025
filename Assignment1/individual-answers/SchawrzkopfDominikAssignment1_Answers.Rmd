@@ -1,0 +1,192 @@
+---
+title: "Causal Inference Policy Evaluation Assignment 1"
+output: html_document
+date: "2025-03-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Define packages that you need
+packages_vector <- c("tidyverse",    # package collection for data management 
+                      "dplyr",       # set of functions to work with data 
+                      "foreign",     # loading data (e.g. data from old Stata versions)
+                      "haven",       # loading data (e.g. data from newer Stata versions)
+                      "knitr",       # integrates computing and reporting
+                      "fastDummies", # dummy creation
+                      "sandwich",    # robust standard errors
+                      "lmtest",      # robust standard errors
+                      "jtools",      # summary statistics (robust standard errors)
+                      "fBasics",     # summary statistics
+                      "arsenal",     # summary statistics
+                      "data.table",  # tables
+                      "stargazer",   # tables
+                      "xtable",      # tables
+                      "expss",       # tables, labels 
+                      "sjlabelled",  # labels
+                      "lubridate",   # dates
+                      "mfx",         # marginal effects for nonlinear models, e.g. probit 
+                      "ggplot2")     # plots and graphs 
+                     
+
+# Uncomment the following line the first time you use these packages to install them
+# install.packages(packages_vector)
+lapply(packages_vector, require, character.only = TRUE) 
+```
+
+
+```{r}
+setwd("C:/Users/schwdo/switchdrive/PhD Dominik/Courses/58920-01 – Causal Inference for Policy Evaluation/04_Assignments/Assignment_1")
+# Loading given dataset
+load("Assignment_1.RData")
+```
+
+```{r}
+glimpse(raw.data)
+
+```
+
+## Question 1
+
+Creating a dummy variable indicating if someone is under 40 years old
+
+```{r}
+
+raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% rowSums()
+
+# Getting an idea of current variables
+raw.data[c("agegr_2", "agegr_3", "agegr_4")] %>% head()
+
+# Creating dummy variable for under 40 years of age (if not agegr_3 & agegr_4)
+raw.data$under_40yo <- ifelse(raw.data$agegr_3 == 0 & raw.data$agegr_4 == 0, 1, 0)
+
+raw.data[c("under_40yo", "agegr_2", "agegr_3", "agegr_4")] %>% head()
+```
+
+Compute the share of people below 40 by treatment status.
+```{r}
+raw.data %>%
+  group_by(treat) %>%
+  summarise(share_under_40 = mean(under_40yo, na.rm = TRUE))
+```
+
+```{r}
+attach(raw.data)
+```
+
+Report the standardized bias and the difference in means along with a p-value.
+```{r}
+# Differences in characteristics and outcomes by treatment status
+#-------------------------------------------------------------------
+
+# a selection of controls
+x_desc<- cbind(under_40yo)
+x_desc_names<- colnames(x_desc)
+
+# Define a function estimating the differences in variables across D
+balance_check.model <- function(x){
+  
+  # Conditional means
+  mean_d0 <- mean(x[treat==0])
+  mean_d1 <- mean(x[treat==1])
+  
+  # Variances in subsamples
+  var_d0 <- var(x[treat==0])
+  var_d1 <- var(x[treat==1])
+  
+  # Difference in means
+  diff_d <- lm(x ~ treat)
+  cov <- vcovHC(diff_d, type = "HC")
+  robust.se <- sqrt(diag(cov))
+  
+  # Absolute standardized bias (difference in means over average std dev - assuming similar size of the groups)
+  sb <- abs((mean_d1-mean_d0)/sqrt((var_d0+var_d1)/2))*100
+  
+  # Store output as a list 
+  list(mean_d0 = mean_d0, 
+       mean_d1 = mean_d1,
+       diff_d = diff_d$coefficients[2], 
+       robust.se = robust.se[2], 
+       pval = 2*pnorm(-abs(diff_d$coefficients[2]/robust.se[2])),
+       SB = sb)             
+}
+
+# Apply to selection of covariates (MARGIN = 2 to loop over columns)
+diff_output <- apply(X = x_desc, MARGIN = 2, FUN = balance_check.model)
+# Convert output in list format into a data frame 
+diff_output<-as.data.frame(rbindlist(diff_output))
+
+# Add number of observations (don't forget the comma!)
+raw.data$treat <- as.vector(raw.data$treat)
+obs <- c(nrow(raw.data[raw.data$treat==0,]), 
+         nrow(raw.data[raw.data$treat==1,]), 
+         NA, NA, NA, NA)
+diff_output <- rbind(diff_output, obs)
+
+# Display in desired format
+rownames(diff_output)<- c(x_desc_names, "Observations")
+colnames(diff_output)<- c("E(X|D=0)", "E(X|D=1)", "Difference", "s.e.", 
+                          "p-value", "Abs. SB")
+print("Difference in means by treatment status and standardized bias")
+print(round(diff_output,digits = 3))
+```
+Based on these metrics, briefly comment on the balancedness of the treatment
+and control group with respect to age and whether we should account for age differences
+in our analysis:
+The dummy variable under_40yo seems well balanced between treatment and control groups, with low standardized bias (2.6%) and an insignificant difference in means at the 5% significance level).
+
+We should still account for age differences in our analysis due to:
+1. Heterogeneity: Age might moderate treatment effects (e.g., younger vs older participants respond differently), so including it enables subgroup or interaction analysis.
+2. Robustness: Including covariates protects against chance imbalances or unobserved heterogeneity in smaller subgroups.
+3. Improved precision: Even small imbalances, or natural outcome variation related to age, can lead to improved statistical efficiency when controlled for.
+
+## Question 2
+### (a)
+```{r}
+
+# Set maximum horizon to look at after start of unemployment, 24 months
+maxdur <- 24
+
+# Matrix with as many rows as observations, and as many columns as months in horizon 
+emp <- matrix(0, nrow=nrow(raw.data), ncol=(maxdur))
+
+# Name the columns for each month
+emp_list <- paste("emp", 1:maxdur, sep="_")
+colnames(emp) <- emp_list
+
+# Replace i^th column = 1 if exited unemployment in month i
+for (i in 1:maxdur) {
+  emp[,i] = ifelse(raw.data$date_end < raw.data$date_start + 30*i & 
+                   raw.data$date_end >= raw.data$date_start + 30*(i-1), 1, 0)
+}
+
+# Bind as data frame
+emp <- as.data.frame(emp)
+data_reg <- cbind(data_reg, emp)
+
+```
+
+
+## Question 3
+```{r}
+
+```
+
+## Question 4
+```{r}
+
+```
+
+
+## Question 5
+```{r}
+
+```
+
+
+## Question 6
+```{r}
+
+```

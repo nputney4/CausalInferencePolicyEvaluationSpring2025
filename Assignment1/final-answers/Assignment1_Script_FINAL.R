@@ -95,10 +95,10 @@ balance_check.model <- function(x){
        SB = sb)
 }
 
-# Apply to selection of covariates (MARGIN = 2 to loop over columns)
 diff_output <- apply(X = x_desc, MARGIN = 2, FUN = balance_check.model)
+
 # Convert output in list format into a data frame
-diff_output<-as.data.frame(rbindlist(diff_output))
+diff_output <-as.data.frame(rbindlist(diff_output))
 
 # Add number of observations (don't forget the comma!)
 raw.data$treat <- as.vector(raw.data$treat)
@@ -113,6 +113,40 @@ colnames(diff_output)<- c("E(X|D=0)", "E(X|D=1)", "Difference", "s.e.",
                           "p-value", "Abs. SB")
 print("Difference in means by treatment status and standardized bias")
 print(round(diff_output,digits = 3))
+
+# Convert rownames into a column for better display
+diff_output$Variable <- rownames(diff_output)
+diff_output <- diff_output %>%
+  dplyr::select(Variable, everything())
+
+# Format as a gt table
+diff_output_gt <- diff_output %>%
+  gt() %>%
+  tab_header(
+    title = "Balance Check by Treatment Status",
+    subtitle = "Difference in Means and Absolute Standardized Bias"
+  ) %>%
+  fmt_number(
+    columns = c(`E(X|D=0)`, `E(X|D=1)`, Difference, `s.e.`, `p-value`, `Abs. SB`),
+    decimals = 3
+  ) %>%
+  cols_label(
+    Variable = "Variable",
+    `E(X|D=0)` = "E(X | D = 0)",
+    `E(X|D=1)` = "E(X | D = 1)",
+    Difference = "Difference",
+    `s.e.` = "Std. Error",
+    `p-value` = "p-value",
+    `Abs. SB` = "Abs. Std. Bias"
+  ) %>%
+  tab_options(
+    table.font.size = "small",
+    heading.title.font.size = "medium",
+    heading.subtitle.font.size = "small"
+  )
+
+# Display the table
+diff_output_gt
 
 # Dummy variable under_40yo seems well balanced between treatment and control groups
 
@@ -330,7 +364,7 @@ ipw_monthly_u40_df <- ipw_monthly_u40_df %>%
 ipw_monthly_u40_df$Group <- "Under 40"
 ipw_monthly_o40_df$Group <- "Over 40"
 ipw_monthly_df <- rbind(ipw_monthly_u40_df, ipw_monthly_o40_df)
-ipw_monthly_df <- ipw_monthly_df %>% dplyr::select(Group, everything())
+ipw_monthly_df <- ipw_monthly_df %>% dplyr::select(Group, month, everything())
 
 # Create tables by group
 ipw_monthly_u40_gt <- ipw_monthly_df %>%
@@ -348,7 +382,10 @@ ipw_monthly_u40_gt <- ipw_monthly_df %>%
     cil = "CI Lower",
     cih = "CI Upper",
     sig = "Significant Effects"
-  )
+  ) %>%
+  tab_options(
+    table.font.size = px(10),
+    data_row.padding = px(1))
 
 ipw_monthly_o40_gt <- ipw_monthly_df %>%
   filter(Group == "Over 40") %>%
@@ -365,10 +402,17 @@ ipw_monthly_o40_gt <- ipw_monthly_df %>%
     cil = "CI Lower",
     cih = "CI Upper",
     sig = "Significant Effects"
-  )
+  ) %>%
+  tab_options(
+    table.font.size = px(10),
+    data_row.padding = px(1))
 
 ipw_monthly_u40_gt
 ipw_monthly_o40_gt
+
+gtsave(ipw_monthly_u40_gt, "ipw_under40_table.pdf")
+gtsave(ipw_monthly_o40_gt, "ipw_over40_table.pdf")
+
 
 ## Question 3
 
