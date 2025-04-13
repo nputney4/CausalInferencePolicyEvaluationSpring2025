@@ -1,0 +1,300 @@
+---
+---
+title: 'Causal Inference: Policy Evaluation — Assignment 2'
+author: "Amit Aryal, Nicholas Putney, Dominik Schwarzkopf"
+date: "2025-04-18"
+output:
+  pdf_document:
+    toc: false         # saves space by skipping table of contents
+    number_sections: false
+    fig_caption: true
+    keep_tex: false
+    latex_engine: xelatex
+    df_print: tibble
+fontsize: 11pt
+mainfont: Times New Roman
+geometry: margin=1in
+---
+
+# Causal Inference for Policy Evaluation - Assignment 2
+Amit Aryal
+Nicholas Putney
+Dominik Schwarzkopf
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,   # Hides code
+	message = FALSE,
+	warning = FALSE,
+	fig.align = "center",  # Optional: center figures
+	out.width = "90%"      # Optional: scale figure size for space
+)
+```
+
+
+```{r 1 packages, results='hide', message=FALSE, warning=FALSE}
+rm(list=ls())
+options(repr.plot.width=8, repr.plot.height=5)
+
+packages_vector <- c("haven", "dplyr", "tidyr", "sandwich", "expss",
+    "fBasics", "xtable", "data.table", "stargazer", "mfx", "jtools", "ggplot2")
+# install.packages(packages_vector)
+lapply(packages_vector, require, character.only = TRUE) 
+
+
+# DiD-specific packages 
+packaged_vector_did <- c("fixest")
+# install.packages(packaged_vector_did)
+lapply(packaged_vector_did, require, character.only = TRUE) 
+
+
+# List loaded packages 
+(.packages())
+
+```
+```{r include=FALSE}
+setwd("C:/Users/schwdo/switchdrive/PhD Dominik/Courses/58920-01 – Causal Inference for Policy Evaluation/04_Assignments/Assignment_2")
+# Loading given dataset
+load("data_assignment.RData")
+```
+
+```{r}
+did_vars <- c("connected", "submarines", "treatment")
+
+```
+Share of treated and control, before and after treatment
+
+```{r 4}
+# check "DiD variables", before treatment is introduced
+desc_before <- dplyr::filter(data, data$submarines==0) 
+fBasics::basicStats(desc_before[did_vars]) %>% 
+            t() %>% 
+            as.data.frame() %>% 
+            dplyr::select(Mean, Stdev, Minimum, Maximum, nobs)
+```
+
+```{r 5}
+# check "DiD variables", after treatment is introduced
+desc_after <- dplyr::filter(data, data$submarines==1) 
+fBasics::basicStats(desc_after[did_vars]) %>% 
+            t() %>% 
+            as.data.frame() %>% 
+            dplyr::select(Mean, Stdev, Minimum, Maximum, nobs)
+```
+
+```{r 6}
+# Check available (normalized) time periods (easier to use in regressions)
+cro(data$time)
+```
+
+## Question 1 a
+# We want to estimate the effect of fast internet on employment (the dummy ‘employed’), similarly to what we did in the tutorial:
+```{r}
+# 1 (a) Estimate the ATET non-parametrically and also the standard error of the estimate using 100 bootstrap replications.
+# Subset treated and control within treated sample
+treated <- data[data$treatment == 1, ]
+control <- data[data$connected == 0 & data$submarines == 1, ]  # untreated but submarines-only
+
+# Non-parametric ATET (difference in means)
+atet <- mean(treated$employed) - mean(control$employed)
+atet
+
+set.seed(12345)  # for reproducibility
+B <- 100
+boot_atet <- numeric(B)
+
+for (i in 1:B) {
+  # resample with replacement
+  treated_b <- treated[sample(1:nrow(treated), replace = TRUE), ]
+  control_b <- control[sample(1:nrow(control), replace = TRUE), ]
+  
+  # recompute ATET
+  boot_atet[i] <- mean(treated_b$employed) - mean(control_b$employed)
+}
+
+# Bootstrapped standard error
+se_atet <- sd(boot_atet)
+se_atet
+
+cat("ATET estimate:", round(atet, 3), "\n")
+cat("Bootstrap SE (100 reps):", round(se_atet, 3), "\n")
+```
+# 1 (b) Estimate the ATET parametrically using a linear model (do not control for locations and time fixed effects). Do not cluster the std. errors.
+```{r}
+# Estimate parametric ATET (no controls, no fixed effects, no clustering)
+model_feols <- feols(employed ~ treatment, data = data)
+
+# Show the regression results
+summary(model_feols)
+```
+# 1 (b) i. Is the point estimate from point (b) similar to the one in point (a)? Should we expect them to be similar? (1 point)
+# No, the point estimates are not similar. The non-parametric ATET is around 0.056, while the parametric estimate is about 0.026. This difference is expected because the non-parametric approach compares treated individuals directly to similar untreated individuals, whereas the parametric model assumes a linear effect across the sample without accounting for fixed effects or covariates. As a result, the parametric estimate may dilute or average out treatment effect heterogeneity, especially if selection into treatment is non-random.
+
+# 1 (b) ii. Is the std. error from point (b) similar to the one in point (a)? Should we expect them to be similar? (1 point)
+# Yes, the standard errors are quite similar: 0.0042 from the non-parametric bootstrap and 0.0038 from the parametric linear model. This similarity is expected because both estimators are applied without fixed effects or covariates and are based on the same data. Although the bootstrap approach resamples the data and does not rely on model assumptions, both methods should give comparable uncertainty estimates under the conditions present in this dataset.
+
+# 1 (c) Estimate again the ATET parametrically using a linear model (do not control for locations and time fixed effects), but now you should cluster the std. errors.
+```{r}
+# Estimate parametric ATET with clustered standard errors (e.g., by location)
+model_clustered <- feols(employed ~ treatment, data = data, cluster = ~location)
+
+# Show results
+summary(model_clustered)
+```
+# The clustered standard error in (c) is 0.0101, which is much larger than the bootstrap standard error in (a) (0.0042) and the unclustered OLS standard error in (b) (0.0038). This is expected because clustering adjusts for within-location correlation, which standard OLS and bootstrap methods may underestimate. Therefore, clustering provides a more conservative and reliable measure of uncertainty in settings where observations are not independent within groups.
+
+# 1 (d) Estimate again the ATET parametrically using a linear model, and also control for locations and time fixed effects. Cluster the standard errors at the location level.
+```{r}
+# Parametric ATET with location and time fixed effects, clustered SEs
+model_fe <- feols(employed ~ treatment | location + quarter, 
+                  data = data, 
+                  cluster = ~location)
+
+summary(model_fe)
+```
+# Is the point estimate for the treatment effect similar to the non-parametric estimate?
+# No, the point estimate from the fixed-effects parametric model (0.0217) is notably smaller than the non-parametric estimate (0.056). While both suggest a positive effect of fast internet on employment, they differ in magnitude, likely due to differences in assumptions, comparison groups, and control for unobserved heterogeneity.
+
+# Should we expect them to be similar?
+# We should not necessarily expect the non-parametric and parametric estimates to be similar, because they rely on different assumptions and identify the treatment effect in different ways.
+
+# The non-parametric approach estimates the ATET by directly comparing treated individuals to a specific subset of untreated individuals (e.g., in submarine-only areas), without imposing a functional form or controlling for unobserved heterogeneity.
+
+# In contrast, the parametric fixed-effects model adjusts for location and time-specific unobservables, and uses variation within locations over time to identify the effect. It also assumes a linear relationship between treatment and outcome.
+
+# These differences mean the methods may estimate different weighted averages of treatment effects, and their results may diverge — especially if treatment effects are heterogeneous or if there’s selection into treatment.
+
+# What could be driving the difference?
+# The difference in ATET estimates is likely driven by the use of different identification strategies, assumptions, and comparison groups. The non-parametric approach estimates a local effect with fewer assumptions, while the parametric model with fixed effects controls for unobserved differences and averages across more heterogeneous units. These factors naturally lead to variation in the estimated treatment effects.
+
+# 2 Your classmates suggest that we should also control for the variable ‘skilled’ in the regression we used in point 1.d, because skilled people are more likely to be employed and also fast internet connection might facilitate skills acquisition.
+
+#2 (a) Do you think that is a good idea to control for the dummy for being skilled? Explain.
+
+# No, it is not a good idea to control for the dummy for being skilled if we are interested in estimating the total effect of fast internet access on employment. The reason is that skilled is likely a mediator — that is, fast internet may enable individuals to acquire skills, and those skills, in turn, may increase the likelihood of being employed.If we include skilled as a control variable, we would be blocking this pathway, and the regression would estimate only the direct effect of internet access on employment, excluding the part of the effect that works through skills acquisition. This would lead to an underestimate of the total treatment effect. Therefore, unless we are specifically interested in the direct effect, it is better to not control for skilled in our main regression when estimating the total causal effect of fast internet on employment.
+
+# 2 (b) Run again the same regression of point 1.d but also control for ‘skilled’ now.
+```{r}
+# Run the regression controlling for skilled
+model_with_skilled <- feols(employed ~ treatment + skilled | location + quarter, 
+                            cluster = ~location, 
+                            data = data)
+
+summary(model_with_skilled)
+```
+
+# 2 (b) Compare the result with the estimate from point 1.d. and comment.
+# When we include the skilled dummy as a control in the regression, the estimated effect of fast internet access (treatment) on employment decreases from 0.0217 to 0.0149, and the standard error also becomes slightly smaller. This suggests that part of the total effect of fast internet on employment operates through skill acquisition. In other words, fast internet may improve employment outcomes in part by helping individuals become more skilled — and those skills, in turn, increase their employability.
+
+# By controlling for skilled, we are essentially blocking the pathway through which the treatment affects skills, and thus estimating only the direct effect of internet access on employment. The fact that the coefficient remains positive and significant indicates that fast internet has both direct and indirect effects on employment — but controlling for skilled reduces the estimated total effect, as expected if skilled is a mediator.
+
+# 3. You are interested in the effect of fast internet on education (educ_high).
+# 3. (a) Replicate the common trends plot with the dummy for high education as outcome.
+```{r}
+common_trends <- data %>%
+  group_by(time, connected) %>%
+  summarise(edu_high_mean = mean(educ_high, na.rm = TRUE))  # Just in case there are NAs
+
+# Label the groups
+common_trends$connected <- factor(common_trends$connected,
+  levels = c(0,1),
+  labels = c("Connected = 0", "Connected = 1"))
+
+# Optional: View the first few rows
+head(common_trends)
+```
+
+```{r}
+ggplot(data = common_trends,
+       aes(x = time, y = edu_high_mean,
+           group = connected,
+           color = connected)) +
+  geom_line() +
+  geom_vline(xintercept = 0.5, linetype = "dashed") +  # Treatment timing
+  scale_x_continuous(breaks = seq(-5, 4, by = 1)) +
+  theme_bw(base_size = 20) +
+  labs(y = "Average high education rate", x = "Time", colour = "Group")
+```
+
+# 3 (a) Provide a possible explanation for the trends you observe.
+# The plot shows that before the introduction of fast internet (time ≤ 0), the high education rate was declining in the unconnected group but remained relatively stable in the connected group. This indicates non-parallel pre-trends, which may pose a challenge to causal identification using Difference-in-Differences.
+
+# After the treatment begins, the connected group experiences a notable increase in the high education rate, while the unconnected group continues its downward trend. This pattern suggests that fast internet may have had a positive impact on education outcomes, potentially by improving access to online learning tools, educational content, or reducing information barriers. However, due to the lack of parallel trends before treatment, these results should be interpreted with caution.
+
+# 3 (b) Conduct an event study for the outcome educ high and report the results in a plot.
+```{r}
+# Event study regression
+event_study <- feols(educ_high ~ i(time, connected, ref = 0) | location + time,
+                     cluster = ~location,
+                     data = data)
+iplot(event_study,
+      ref.line = 0,
+      xlab = "Time to treatment",
+      ylab = "Effect on high education rate",
+      main = "Event Study: Fast Internet and High Education")
+```
+# 3 (b) Based on the results from this and the last question, is it reasonable to use a DiD strategy for this outcome variable?
+# Yes, it is reasonable to use a Difference-in-Differences (DiD) strategy for this outcome. The event study plot shows that the pre-treatment coefficients are close to zero and not statistically significant, which supports the parallel trends assumption. This suggests that, in the absence of treatment, the connected and unconnected groups would have followed similar trends in high education rates. After treatment, the estimates become positive and statistically significant, indicating that fast internet likely had a causal effect on increasing high education rates. Thus, the DiD approach is appropriate and credible in this context.
+
+# 3 (c) Given the common trend plot above, if you were to estimate the effect of fast internet using a DiD strategy, can we say whether our estimate would be up-ward or downward biased?
+
+# Based on the common trends plot, the unconnected group shows a declining trend in high education rates before treatment, while the connected group remains relatively flat. If we use a DiD strategy assuming parallel trends, we would underestimate what would have happened to the treated group in the absence of treatment — leading to a DiD estimate that is biased upward. In other words, we would overstate the effect of fast internet on education.
+
+#4 (a) Let’s go back to the non-parametric estimate of question 1.a. Adjust the function you used to compute the bootstrapped std. error in order to cluster at the location level. Compute the clustered std. error using 100 bootstrap replications.
+```{r}
+set.seed(12345)  # for reproducibility
+B <- 100  # number of bootstrap reps
+
+# Get unique clusters
+clusters <- unique(data$location)
+n_clusters <- length(clusters)
+
+# Empty vector to store bootstrap estimates
+boot_atet <- numeric(B)
+
+for (i in 1:B) {
+  
+  # Sample clusters with replacement
+  sampled_clusters <- sample(clusters, size = n_clusters, replace = TRUE)
+  
+  # Build bootstrap sample by combining all observations from the sampled clusters
+  boot_sample <- data[data$location %in% sampled_clusters, ]
+  
+  # Subset treated and control groups within bootstrap sample
+  treated <- boot_sample[boot_sample$treatment == 1, ]
+  control <- boot_sample[boot_sample$connected == 0 & boot_sample$submarines == 1, ]
+  
+  # Compute ATET
+  boot_atet[i] <- mean(treated$employed) - mean(control$employed)
+}
+
+# Clustered bootstrap standard error
+clustered_se <- sd(boot_atet)
+
+# Report results
+cat("Clustered bootstrap ATET SE (100 reps):", round(clustered_se, 4), "\n")
+
+```
+# 4 (a) Is the result similar to that in point 1.c?
+# Yes, the clustered bootstrap standard error of 0.0089 from the non-parametric ATET is similar in magnitude to the clustered standard error of 0.0101 obtained from the parametric model in point 1(c). Both approaches adjust for within-location correlation and produce comparable measures of uncertainty, which reinforces the reliability of the estimated treatment effect. The small difference is expected due to the different estimation strategies (non-parametric vs. linear model), but overall the results are consistent.
+
+# Instrumental Variable (5 points)
+# Read the paper for the next lab session: Angrist, J., and W. Evans (1998). Children and Their Parents’ Labor Supply: Evidence from Exogenous Variation in Family Size, American Economic Review 88(3): 450–477. Then answer the following questions:
+
+# 5. (a) Why can’t we just regress female labour supply on the number of children to estimate a causal effect?
+
+# Endogeneity of fertility: The number of children a woman has is not randomly assigned.
+
+# Selection bias: Women who choose to have more children may also prefer not to work, or may have different economic circumstances (e.g. higher or lower income).
+
+# A simple OLS regression would confound the effect of children on labor supply with these unobserved characteristics.
+
+# 5. (b) The IV strategy of the authors only identifies a very specific average treatment effect. What is that? Be precise and context-specific.
+
+# The IV strategy used by Angrist and Evans identifies the Local Average Treatment Effect (LATE) of having a third child on parental labor supply — specifically for the subgroup of women whose decision to have a third child is influenced by the sex composition of their first two children. This subgroup consists of women who are more likely to have a third child only because their first two children are of the same sex (e.g., two boys or two girls) and who might not have had a third child if their first two children were of mixed sex.
+
+# Thus, the causal effect identified is not the average effect for all mothers, but the effect for “compliers” — those whose fertility behavior responds to the instrument (child sex composition). The LATE estimated in the paper reflects how having a third child affects labor supply among this specific group of women, and may not generalize to women whose fertility choices are not affected by child sex composition.
+
+# 5. (c) Consider columns 1 and 2 in Table 7, which presents OLS and IV estimates, respectively. Provide an explanation for why the OLS estimate are lower than the IV ones (i.e. OLS over-estimates the negative effect).
+
+# The OLS estimates in column (1) of Table 7 are more negative than the IV estimates in column (2) because OLS is biased by selection: women who have more children may also have stronger preferences for staying at home and lower attachment to the labor market. As a result, OLS overstates the negative effect of fertility on labor supply. The IV estimates, which use child sex composition to generate exogenous variation in family size, correct for this bias and suggest a smaller true causal effect.
