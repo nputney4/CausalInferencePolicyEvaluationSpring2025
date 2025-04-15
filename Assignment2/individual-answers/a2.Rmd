@@ -1,0 +1,286 @@
+---
+title: "Causal Inference: Policy Evaluation - Assignment 2"
+author: "amit"
+date: "2025-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,   # Hides code
+	message = FALSE,
+	warning = FALSE,
+	fig.align = "center",  # Optional: center figures
+	out.width = "80%",      # Optional: scale figure size for space
+	fig.height = 3,
+	fig.width = 6
+	)
+
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Define packages that you need
+packages_vector <- c("haven", "dplyr", "tidyr", "sandwich", "expss",
+    "fBasics", "xtable", "data.table", "stargazer", "mfx", "jtools", "ggplot2", "boot", "fixest")
+                     
+# Uncomment the following line the first time you use these packages to install them
+ install.packages("fixest")
+lapply(packages_vector, require, character.only = TRUE) 
+```
+
+```{r include=FALSE}
+# Loading given dataset
+load("C:/Users/aryaam/Documents/Documents/Courses/Causal inferences/Assignments/a2/data_assignment.RData")
+
+glimpse(data)
+```
+
+
+```{r include=FALSE}
+# Treated group variable
+did_vars <- c("connected", "submarines", "treatment")
+
+# Attach data 
+attach(data)
+```
+
+
+#Share of treated and control, before and after treatment
+
+```{r 4}
+# check "DiD variables", before treatment is introduced
+desc_before <- dplyr::filter(data, data$submarines==0) 
+fBasics::basicStats(desc_before[did_vars]) %>% 
+            t() %>% 
+            as.data.frame() %>% 
+            dplyr::select(Mean, Stdev, Minimum, Maximum, nobs) #13.88% in treatment group, number of observations is 173519 
+```
+
+```{r 5}
+# check "DiD variables", after treatment is introduced
+desc_after <- dplyr::filter(data, data$submarines==1) 
+fBasics::basicStats(desc_after[did_vars]) %>% 
+            t() %>% 
+            as.data.frame() %>% 
+            dplyr::select(Mean, Stdev, Minimum, Maximum, nobs) #13.88% in treatment group (less people in treatment group than before)
+```
+```{r 6}
+# Check available (normalized) time periods (easier to use in regressions)
+cro(time) 
+
+```
+
+
+#Estimate the ATET non-parametrically and also the standard error of the estimate
+#using 100 bootstrap replications. (3 points)
+
+```{r 8}
+# measure difference in means of the treated
+
+# Calculate ATET
+treated <- data %>% filter(connected == 1, submarines == 1) %>% pull(employed)
+control <- data %>% filter(connected == 0, submarines == 1) %>% pull(employed)
+
+att_estimate <- mean(treated) - mean(control)
+att_estimate
+
+# Bootstrap ATT statistic function
+att_stat <- function(data, indices) {
+  boot_data <- data[indices, ]
+
+  treated_vals <- boot_data %>%
+    filter(treatment == 1) %>%
+    pull(employed)
+  
+  control_vals <- boot_data %>%
+    filter(connected == 0, submarines == 1) %>%
+    pull(employed)
+  
+  if (length(treated_vals) == 0 || length(control_vals) == 0) return(NA)
+  
+  mean(treated_vals) - mean(control_vals)
+}
+
+# Run bootstrap
+set.seed(123)
+boot_results <- boot(
+  data = data,
+  statistic = att_stat,
+  R = 100
+)
+
+# Get bootstrap standard error
+standard_error <- sd(boot_results$t, na.rm = TRUE)
+
+# Print results
+cat("ATT Estimate:", att_estimate, "\n")
+cat("Bootstrap SE:", standard_error, "\n")
+
+```
+
+
+#Estimate the ATET parametrically using a linear model (do not control for locations
+#and time fixed effects). Do not cluster the std. errors.
+#i. Is the point estimate from point (b) similar to the one in point (a)? Should we
+#expect them to be similar? (1 point)
+#ii) Is the std. error from point (b) similar to the one in point (a)? Should we expect
+#them to be similar?
+
+#The point estimate by linear model is different from the non-parametric model. We do #not expect it to be the same because the linear model does not adequately matching #controls (i.e. for radial distance and time fixed effects), resulting in #underestimation of treatment effects.
+
+##ii) The standard error from linear model is 0.003817 compared to 0.003799 using the ##bootstrap model. They are similar because both use the same identical data to estimate standard errors.
+```
+
+```{r 9}
+did1 <- feols(employed ~treatment, data)
+summary(did1)
+
+```
+
+#Estimate again the ATET parametrically using a linear model (do not control for locations and time fixed effects), but now you should #cluster the std. errors. Compare the std. errors to points (a) and (b). (1 point)
+
+#The standard error is higher (0.010) when we cluster by location compared to linear and non-parametric estimation. # Standard errors that do not cluster assume independent associations between observations, which underestimates the #true value. Therefore, clustering by location produces the true and conservative standard error.
+
+```{r 9}
+did2 <- feols(employed ~treatment, data)
+summary(did2, cluster = "location")
+```
+
+#The treatment effect is 0.0256, lower than non-parametric model (0.056). The ols model underestimates the treatment #effect because it does not match the treatment group with adequate controls.
+
+```{r 10}
+did3 <- feols(employed ~ treatment | time + location , data)
+summary(did3, cluster = "location")
+```
+
+#Your classmates suggest that we should also control for the variable ‘skilled’ in the regression we used in point 1.d, because skilled #people are more likely to be employed and also fast internet connection might facilitate skills acquisition.
+#(a) Do you think that is a good idea to control for the dummy for being skilled? Explain.(2 points)
+
+#Yes, because if the internet facilitates skills acquisition then it suggests that it varies over time. We need to #include it to control for time-varying confounding.
+
+
+#b) Run again the same regression of point 1.d but also control for ‘skilled’ now. Compare
+#the result with the estimate from point 1.d. and comment. (1 points)
+
+#Being connected increases treatment effect by 1.49 percentage points compared to regions that are not connected #after controlling for fixed effects and skilled. This is a lower treatment effect than 1d (2.17 percentage points) #without controlling for skilled. Being skilled positively correlates with employment and not including skilled #leaves a backdoor path between connected and employed. Including it blocks the path and isolates the effect of the #skilled. Therefore, the model with the skilled is #likely closer to the causal effect, assuming there is no #unobserved confounding.
+
+
+```{r 11}
+did4 <- feols(employed ~ treatment + skilled | time + location , data)
+summary(did4, cluster = "location")
+```
+
+
+```{r 12}
+
+# Create a group-means data set
+common_trends <- data %>% 
+                 group_by(time, connected) %>%                        #group data by time and treatment status
+                 summarise(mean_hied = mean(educ_high))
+
+common_trends$connected <- factor(common_trends$connected, 
+                                  levels = c(0,1), 
+                                  label = c("Connected = 0", 
+                                            "Connected = 1")) 
+# View data
+head(common_trends)
+
+# Plot
+ggplot(data = common_trends, 
+       aes(x = time, y = mean_hied, 
+           group = connected, 
+           color = connected)) + 
+  geom_line() +
+  geom_vline(xintercept = 0.5, linetype="dashed") +
+  scale_x_continuous(breaks = seq(-5, 4, by = 1)) +
+  theme_bw(base_size = 20) +
+  labs( y ="Average high educ rate", x= "Time", colour = "Group")
+
+
+```
+```
+```
+#b) Conduct an event study for the outcome educ high and report the results in a plot.
+#Based on the results from this and the last question, is it reasonable to use a DiD
+#strategy for this outcome variable? (2 points)
+
+#Educ_high violates parallel trend assumption because there is a clear anticipation trend prior to time=0, #therefore, it is #not reasonable to use a DiD strategy.
+
+```{r 13}
+did5 <- feols(educ_high ~ i(time, connected, 0) | time + location, data)
+summary(did5, cluster = "location")
+iplot(did5) 
+```
+
+#c) Given the common trend plot above, if you were to estimate the effect of fast internet
+#using a DiD strategy, can we say whether our estimate would be up-ward or downward biased? (1 points)
+
+#It would be up-ward biased because educ_high is already trending lower in the non-connected areas prior to time=0, #while it remained relatively stable in the connected group during the same time period.
+
+
+#(a) Let’s go back to the non-parametric estimate of question 1.a. Adjust the #function you used to compute the bootstrapped std. error in order to cluster at the #location 2 level. Compute the clustered std. error using 100 bootstrap replications #(this will take a while to run). Is the result similar to that in point 1.c? (5 #points)
+
+
+#answer: Treatment effect is 0.0489 and SE is 0.0126.
+
+```{r 14}
+
+# Define cluster bootstrap function
+att_cluster <- function(data, location) {
+  
+  # Resample clusters WITH replacement
+cluster <- sample(unique(data$location), length(unique(data$location)), replace = TRUE)
+  
+  # Rebuild bootstrapped dataset by combining resampled clusters
+  boot_data <- lapply(cluster, function(clust) {
+    data %>% filter(location == clust)
+  }) %>% bind_rows()
+  
+  # Compute ATET
+  treated_cluster <- boot_data %>%
+    filter(connected == 1, submarines == 1) %>%
+    pull(employed)
+  
+  control_cluster <- boot_data %>%
+    filter(connected == 0, submarines == 1) %>%
+    pull(employed)
+  
+  if (length(treated_cluster) == 0 || length(control_cluster) == 0) return(NA)
+  
+  return(mean(treated_cluster) - mean(control_cluster))
+}
+
+# Set number of bootstrap replications
+R <- 10
+set.seed(123)
+
+# Run bootstrap manually
+boot_ests_clus <- replicate(R, att_cluster(data), simplify = TRUE)
+
+# Get ATT estimate and bootstrap SE
+att_est_clus <- att_cluster(data)
+bootst_se_clus <- sd(boot_ests, na.rm = TRUE)
+
+# Print results
+cat("ATT Estimate:", att_est_clus, "\n")
+cat("Clustered Bootstrap SE:", bootst_se_clus, "\n")
+
+
+```
+
+
+#Instrumental Variable (5 points)
+#Read the paper for the next lab session: Angrist, J., and W. Evans (1998). Children #and Their Parents’ Labor Supply: Evidence from Exogenous Variation in Family Size, #American Economic Review 88(3): 450–477. Then answer the following questions:
+
+#(a) Why can’t we just regress female labour supply on the number of children to #estimate a causal effect? (2 points)
+#We cannot simply regress female labour supply on the number of children because 
+#there could be other unobserved confounders that could influence labour force #participation than just the number of children.
+
+#(b) The IV strategy of the authors only identifies a very specific average treatment # effect.What is that? Be precise and context-specific. (1 point)
+#The authors explore the causal effect of having a third child on female labor supply #among women whose decision to have a third child is influenced by the sex of the #first two. The authors exploit a woman's likelihood to have a 
+#third child if the first 2 are of the same sex. More specifically, the women
+#belonging to this goup can be identified as Local Average Treat Effect (LATE) and the subsequent treatment effect is not generalizable to other women.
+
+#(c) Consider columns 1 and 2 in Table 7, which presents OLS and IV estimates, #respectively. Provide an explanation for why the OLS estimate are lower than the IV #ones (i.e. OLS over-estimates the negative effect). (2 points)
+
