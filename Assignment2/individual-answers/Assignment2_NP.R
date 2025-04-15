@@ -87,7 +87,7 @@ summary(did1)
 ## (c)
 did1_clust_summary <- summary(did1, cluster = "location")
 cat("Not Clustered SE:", round(did1$se[["treatment"]], 4))
-cat("Clustered SE:", round(did1_clust_se$se[["treatment"]], 4))
+cat("Clustered SE:", round(did1_clust_summary$se[["treatment"]], 4))
 
 # The standard error doubles from about 0.0051 to 0.0101, implies employment (really residuals) within locations are correlated
 
@@ -135,7 +135,7 @@ common_trends$connected <- factor(common_trends$connected,
                                   levels = c(0,1),
                                   labels = c("Connected = 0", "Connected = 1"))
 
-View(common_trneds)
+View(common_trends)
 
 ggplot(data = common_trends,
        aes(x = time, y = edu_high_mean,
@@ -144,15 +144,15 @@ ggplot(data = common_trends,
   geom_line(size = 1.7) +
   geom_vline(xintercept = 0.5, linetype = "dashed") + # why at 0.5?
   scale_x_continuous(breaks = seq(-5, 4, by = 1)) +
-  theme_bw(base_size = 20) +
+  theme_bw(base_size = 14) +
   labs(y = "Average high education rate", x = "Time", colour = "Group")
 
 # Prior to the introduction of submarine cables, the difference in education between the connected and unconnected
-# groups were much smaller than after the introduction of submarine cables. However, the difference not
+# groups were much smaller than after the introduction of submarine cables. However, the difference is not
 # constant over time. There could be many reasons for the different trajectories prior to the arrival of high-speed internet -
 # anything that affects education and changed over time differently between treated and untreated could explain
-# this difference. After the onset of high-speed internet, we do that this difference widens, possibly indicating that
-# high-speed internet leads to higher education attainment. Another possbility, however, is that
+# this difference. After the onset of high-speed internet, we see that this difference widens, possibly indicating that
+# high-speed internet leads to higher education attainment. Another possibility, however, is that
 # highly educated workers moved from the unconnected to the connected locations, where jobs requiring
 # higher education became more available due to onset of high-speed internet.
 
