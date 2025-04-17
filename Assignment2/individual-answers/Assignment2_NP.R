@@ -192,29 +192,18 @@ iplot(did4,
 ATET_np_cluster_bootstrap <- function(data, B = 100, seed = 23) {
   set.seed(seed)
 
-  # Find all locations
-  cluster_ids <- unique(data[["location"]])
+  cluster_list <- split(data, data$location)  # Split data once
+  cluster_ids <- names(cluster_list)
   G <- length(cluster_ids)
 
-  # Initialize vector for storing estimates
   atet_boot <- numeric(B)
 
-  # Run bootstraps B times
   for (b in 1:B) {
-
-    # Resample clusters with replacement
+    # Sample clusters with replacement
     sampled_clusters <- sample(cluster_ids, size = G, replace = TRUE)
 
-    # Initialize data frame to store data from each cluster
-    boot_data <- data.frame()
+    boot_data <- do.call(rbind, cluster_list[sampled_clusters])
 
-    # Add data from each cluster to the dataframe
-    for (clust_id in sampled_clusters) {
-      cluster_rows <- data[data[["location"]] == clust_id, ]
-      boot_data <- rbind(boot_data, cluster_rows)
-    }
-
-    # Compute ATET for the boostrap sample
     atet_boot[b] <- ATET_np_fn(boot_data)
   }
 
