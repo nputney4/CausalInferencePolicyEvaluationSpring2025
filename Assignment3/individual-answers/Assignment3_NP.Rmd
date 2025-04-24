@@ -1,0 +1,144 @@
+---
+title: "Assignment3_NP"
+output: html_document
+date: "2025-04-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Empty working space
+rm(list=ls())
+
+#Load Packages
+# Define packages that you need, 
+packages_vector <- c( "haven", "dplyr",  "sandwich",  "jtools", "fBasics",  
+                     "xtable",  "stargazer", "data.table", "tidyverse", "ggplot2", 
+                     "AER", # AER package for ivreg command 
+                     "causalweight") # for semiparametric LATE
+lapply(packages_vector, require, character.only = TRUE) 
+
+```
+
+```{r}
+# Read in the data
+load("C:/Users/putne/OneDrive/Documents/CausalInferencePolicyEvaluationSpring2025/Assignment3/instructions-and-setup/AngristEvans1980_reduced.RData")
+```
+
+```{r}
+desc <- fBasics::basicStats(data) %>% 
+                t() %>% 
+                as.data.frame() %>% 
+                dplyr::select(Mean, Stdev, nobs)
+
+print("Descriptive statistics")
+print(round(desc, digits=3))
+
+glimpse(data)
+Hmisc::describe(data)
+```
+
+
+
+## Question 1 - Estimating Effect of Fertility on Male Labour Supply - OLS
+### (a)
+```{r}
+# Only include rows which describe a married couple
+data_m <- data %>% filter(msample == 1)
+
+print("Average Age and Income of Mothers and Fathers When First Child was Born")
+age_income_df <- data.frame(Parent = c("Mother", "Father"), Age = c(data_m$agem %>% mean(), data_m$aged %>% mean()),
+           Income = c(data_m$incomem %>% mean(), data_m$incomed %>% mean())) %>%
+  mutate(across(c(Age, Income), ~ round(.x, 2)))
+
+age_income_df
+```
+
+It appears that, within married couples, fathers are on average slightly older and have a substantially higher income then the mothers at the time their first child is born (39000 vs. 6200). Given that the men have a much higher income, it is possible that the decision is made within the couple for women to spend more time at home on domestic chores and looking after the child, while the man continues to work. 
+
+### (b)
+```{r}
+d1b <- data_m$morekids # binary: had more than two kids
+y1b <- data_m$hourswd # mens hours worked per week
+z1b <- data_m$samesex # binary: first two children same sex
+
+ols.1b <- lm(d1b ~ z1b)
+summ(ols.1b, robust = "HC1")
+
+ols.2b <- ivreg(y1b ~ d1b  | z1b)
+summary(ols.2, vcov = sandwich, diagnostics = TRUE)
+```
+Among compilers (i.e. those who have a third kid if the first two are the same sex AND do not have a third kid if the first are a different sex), it does not seem that have more than two kids has much impact on the number of hours worked for the fathers.
+
+### (c)
+```{r}
+d1c <- data_m$morekids # binary: had more than two kids
+y1c <- data_m$hourswd # mens hours worked per week
+z1c_boys <- data_m$boys2 # binary: first two births boys 
+z1c_girls <- data_m$girls2 # binary: first two births girls
+
+ols.1c <- lm(d1c ~ z1c_boys + z1c_girls)
+summ(ols.1c, robust = "HC1")
+
+ols.2c <- ivreg(y1c ~ d1c  | z1c_boys + z1c_girls)
+summary(ols.2c, vcov = sandwich, diagnostics = TRUE)
+
+```
+Among compliers (i.e. those who will have a third kid only because they had two boys OR a third kid only because they had two girls)
+
+### (d)
+```{r}
+
+```
+
+### (e)
+```{r}
+
+```
+
+
+## Question 2 - Estimating Effect of Fertility on Male Labour Supply - Two Stage Least Squares
+### (a)
+```{r}
+
+```
+
+### (b)
+```{r}
+
+```
+
+### (c)
+```{r}
+
+```
+
+### (d)
+```{r}
+
+```
+
+
+## Question 3 - Replicating study with Switzerland data
+### (a)
+```{r}
+
+```
+
+### (b)
+```{r}
+
+```
+
+### (c)
+```{r}
+
+```
+
+
+## Question 4 
+
+
+## Question 5
