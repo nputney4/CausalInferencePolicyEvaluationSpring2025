@@ -70,7 +70,7 @@ summ(ols.1b, robust = "HC1")
 ols.2b <- ivreg(y1b ~ d1b  | z1b)
 summary(ols.2, vcov = sandwich, diagnostics = TRUE)
 ```
-Among compilers (i.e. those who have a third kid if the first two are the same sex AND do not have a third kid if the first are a different sex), it does not seem that have more than two kids has much impact on the number of hours worked for the fathers.
+Among compilers (i.e. those who have a third kid if the first two are the same sex AND do not have a third kid if the first are a different sex), it seems having more than two kids has a small positive but insignificant effect on the number of hours worked for the fathers.
 
 ### (c)
 ```{r}
@@ -86,22 +86,26 @@ ols.2c <- ivreg(y1c ~ d1c  | z1c_boys + z1c_girls)
 summary(ols.2c, vcov = sandwich, diagnostics = TRUE)
 
 ```
-Among compliers (i.e. those who will have a third kid only because they had two boys OR a third kid only because they had two girls)
+Among compliers, the impact of having more than two kids on hours worked is positive but still small and insignificant.
 
 ### (d)
-```{r}
 
-```
 
 ### (e)
 ```{r}
+d1e <- data_m$morekids # binary: had more than two kids
+y1e <- data_m$hourswd # mens hours worked per week
 
+ols.1e <- lm(y1e ~ d1e)
+summ(ols.1e, robust = "HC1")
 ```
 
+Using only OLS, we now see a negative (but still small and insignificant) effect of having kids on number of hours worked by the father. The standard error is now also much smaller. The difference between the 2SLS and the OLS likely comes from common causes of having more than two kids and hours worked per week by the father that are not being included in the analysis (i.e. unmeasured confounding). If this is the cause for the differences, then it would be preferred to do the 2SLS approach. There are, however, other possible reasons for these differences. For example, even in the absence of confounders, if the treatment effect is much different for compliers than for other segments of the population, then the estimates will be different. Additionally, it is also technically possible that it is not unobserved confounders but instead common causes of the instrument and the outcome that are driving the differences. Given that is is less likely for such variables to exist compared to treatment-outcome confounders, it is best to do the 2SLS approach here. 
 
 ## Question 2 - Estimating Effect of Fertility on Male Labour Supply - Two Stage Least Squares
 ### (a)
 ```{r}
+
 
 ```
 
