@@ -105,44 +105,91 @@ Using only OLS, we now see a negative (but still small and insignificant) effect
 ## Question 2 - Estimating Effect of Fertility on Male Labour Supply - Two Stage Least Squares
 ### (a)
 ```{r}
+median_age_m <- median(data$agem) 
+data_om <- data %>% filter(agem > median_age_m) # households where woman is over median age 
+data_um <- data %>% filter(agem <= median_age_m) # households where woman is under median age 
 
-
+data_om$morekids %>% mean() %>% round(3)
+data_um$morekids %>% mean() %>% round(3)
 ```
 
 ### (b)
 ```{r}
+y2b <- data_um$weeksm
+d2b <- data_um$morekids
+x2b <- as.matrix(data_um[,c("agem", "agefstm", "blackm", "hispm", "othracem")])
+
+ols.2b <- lm(y2b ~ d2b + x2b)
+summ(ols.2b, robust = "HC1")
 
 ```
+
+I do not think these variables are enough to alleviate potential endogeneity concerns. For example, things like religion and socioeconomic status may be correlated with having more kids and also have a causal relationship with the number of hours worked per work by mothers. If this were to be the case, the assumption of unfoundedness would be violated and our causal effect unidentifiable. 
+
 
 ### (c)
 ```{r}
+#lm(morekids ~ samesex, data = data_um)
+
+tsls_2c <- ivreg(weeksm ~ morekids | samesex, data = data_um)
+summary(tsls_2c, vcov = sandwich, diagnostics = TRUE)
 
 ```
+
+The effect of having more kids on hours worked per week by the mother is larger using the 2SLS approach versus the OLS.
 
 ### (d)
-```{r}
-
-```
+Not sure - maybe something to do with the fact that few people have "had the chance" to have more than two children - may decrease the relevance of the instrument?
 
 
 ## Question 3 - Replicating study with Switzerland data
 ### (a)
 ```{r}
+# Are some households missing mothers or fathers?
+data$hourswm %>% is.na() %>% sum()
+data$hourswd %>% is.na() %>% sum()
 
+# Check employment rates for men and women
+women_er <- mean(na.omit(data$hourswm) > 0) %>% round(3) # women
+men_er <- mean(na.omit(data$hourswd) > 0) %>% round(3) # men
+
+# Check how common part time work is for men and women
+women_pt <- mean((na.omit(data$hourswm) > 0) & (na.omit(data$hourswm) < 40)) %>% round(3) # women
+men_pt <- mean((na.omit(data$hourswd) > 0) & (na.omit(data$hourswd) < 40)) %>% round(3) # men
+
+women_men_df <- data.frame(Measure = c("Emp. Rate", "P.T. rate"), 
+                           Women = c(women_er, women_pt),
+                           Men = c(men_er, men_pt))
+
+women_men_df
 ```
+It is apparent that more mothers in Switzerland today participate in the labor market and, of those who work, more work full time, compared to those in the 1980s in the United States. On the other hand, fathers are less likely to work in general and are more likely to engage in part time work. This may be a consequence of more equal sharing of unpaid domestic work and formal participation in the labor market. Because of this, if we were to use data coming from Switzerland today, it is likely the effect in men would be greater and the effect in women be smaller. 
 
 ### (b)
+To estimate the effect of fertility in labor supply in Switzerland today, we'd likely have to change the definition of our exposure. This is due to the fact that many people are having less than two children. One way to do this is to look at the impact of having more than one kid, instead of having more than two kids. Then, the first step would regress a dummy that indicates whether the household has more than one kid against the instrument. Then, the estimates of this exposure variable will be used in a model with labor supply outcomes as the response. If it is thought that sex itself influences whether or not someone will have another kid, then sex could be used as the instrument. 
+
 ```{r}
 
 ```
 
 ### (c)
-```{r}
-
-```
+Restricting ages to be between 21 and 35 might be problematic as women are now have children later and later (many are likely having additional children after the age of 35). Additionally, given the much lower fertility rate of Switzerland today compared to US back then, it perhaps be problematic to limit the analyses to those having more than two children. 
 
 
 ## Question 4 
+### (a)
+The Sargan test can be used to test the validity of the instrument. I don't really understand it. I think the idea is that the errors of the second stage regression should not be correlated with the instrumental variable. Because, this implies that there are common causes of the instrument and outcome, violating the "exclusion" principle.
 
+Hausman test can be used to dermine if a given exposure of interest is endogenous. I don't really understand it. I think the principle is that if the exposure being used is exogenous (maybe conditioning on some things idk) then the 2SLS and IV approach should yield the same results, as the same treatment effect is being targeted.
+
+### (b)
+Sargan test - assumes homoskedastic errors, assumes at least one instrument is valid...
 
 ## Question 5
+### (a) 
+Data from 1990 is included to test the "local continuity" assumption that would require the potential outcomes to be continuous across all values of the win margin. If we would see a jump at 0 in the 1990 data, this would violate this assumption and indicate that those municipalities who had a small victory margin in 1994 differ systematically from those who barely lost. 
+
+### (b)
+
+
+### (c)
