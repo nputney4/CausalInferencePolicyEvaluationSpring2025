@@ -190,6 +190,7 @@ Sargan test - assumes homoskedastic errors, assumes at least one instrument is v
 Data from 1990 is included to test the "local continuity" assumption that would require the potential outcomes to be continuous across all values of the win margin. If we would see a jump at 0 in the 1990 data, this would violate this assumption and indicate that those municipalities who had a small victory margin in 1994 differ systematically from those who barely lost. 
 
 ### (b)
+The narrower bandwidth in women is due to a more non-linear relationship with the forcing variable compared to men. 
 
 
 ### (c)
