@@ -1,0 +1,216 @@
+---
+title: "Assignment 3"
+author: "DS"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Laptop
+knitr::opts_knit$set(root.dir = here::here("C:/Users/schwdo/switchdrive/PhD Dominik/Courses/58920-01 – Causal Inference for Policy Evaluation/04_Assignments/Assignment_3"))
+
+knitr::opts_chunk$set(
+	echo = FALSE,   # Hides code
+	message = FALSE,
+	warning = FALSE,
+	fig.align = "center",  # Optional: center figures
+	out.width = "90%"      # Optional: scale figure size for space
+)
+```
+
+## R Markdown
+
+
+```{r 1 packages, results='hide', message=FALSE, warning=FALSE}
+# Empty working space
+rm(list=ls())
+
+#Load Packages
+# Define packages that you need, 
+packages_vector <- c( "haven", "dplyr",  "sandwich",  "jtools", "fBasics",  
+                     "xtable",  "stargazer", "data.table", "tidyverse", "ggplot2", 
+                     "AER", # AER package for ivreg command 
+                     "causalweight") # for semiparametric LATE
+#install.packages(packages_vector)
+lapply(packages_vector, require, character.only = TRUE) 
+
+
+# Set working directory
+getwd()
+work_dir <- "C:/Users/schwdo/switchdrive/PhD Dominik/Courses/58920-01 – Causal Inference for Policy Evaluation/04_Assignments/Assignment_3"
+setwd(work_dir)
+
+```
+### Read in the data
+
+
+```{r 2}
+# Read in provided data file:
+load("AngristEvans1980_reduced.RData")
+
+# Inspect
+head(data)
+
+# See what is inside
+ls()
+
+# Quick look at the data
+str(data)  # or whatever the object name is
+summary(data)
+```
+# 1(a)
+```{r}
+# Restrict to married couples
+data_married <- data %>% 
+  dplyr::filter(msample == 1)
+
+# Compute average age at first birth
+mean_mother_age_first_birth <- mean(data_married$agefstm, na.rm = TRUE)
+mean_father_age_first_birth <- mean(data_married$agefstd, na.rm = TRUE)
+
+# Compute average labour income
+mean_mother_income_first_birth <- mean(data_married$incomem, na.rm = TRUE)
+mean_father_income_first_birth <- mean(data_married$incomed, na.rm = TRUE)
+
+# Print results
+cat("Average mother's age at first birth:", mean_mother_age_first_birth, "\n")
+cat("Average father's age at first birth:", mean_father_age_first_birth, "\n")
+cat("Average mother's income:", mean_mother_income_first_birth, "\n")
+cat("Average father's income:", mean_father_income_first_birth, "\n")
+```
+# If fathers are older and earn much more than mothers at the first child’s birth, it suggests traditional household roles may persist, with men focus more on market labor supply (work outside) and women allocating more time to childcare and domestic work, possibly reducing their labor supply. This age and income gap could explain gender specialization in the household.
+# 1(b)
+```{r}
+# 2SLS regression using samesex as instrument
+iv_model_b <- ivreg(hourswd ~ morekids | samesex, data = data_married)
+
+# Summary of the 2SLS
+summary(iv_model_b)
+
+# First stage regression (morekids on samesex)
+first_stage_b <- lm(morekids ~ samesex, data = data_married)
+summary(first_stage_b)
+```
+# 1(c)
+```{r}
+# 2SLS regression using boys2 and girls2 as instruments
+iv_model_c <- ivreg(hourswd ~ morekids | boys2 + girls2, data = data_married)
+
+# Summary of the 2SLS
+summary(iv_model_c)
+
+# First stage regression (morekids on boys2 and girls2)
+first_stage_c <- lm(morekids ~ boys2 + girls2, data = data_married)
+summary(first_stage_c)
+```
+
+# 1(d)
+
+#In (b), we use a single instrument (samesex) to estimate the effect of fertility, while in (c), we use two instruments (boys2 and girls2) jointly. Using two instruments exploits more variation in sex composition but requires both instruments to be valid.
+
+#The 2SLS estimate in (b) was 0.108 (SE = 1.095, p = 0.921), and in (c) it was 0.226 (SE = 1.061, p = 0.831). In both cases, the estimates were small and not statistically significant, suggesting no strong evidence that fertility affects male labor supply.
+
+#Regarding the first stage, both approaches show strong instruments: in (b), the F-statistic was 539.2, and in (c), it was 287.2. Therefore, the relevance condition for instrument validity appears satisfied in both cases.
+
+# 1 (e)
+```{r}
+# OLS regression
+ols_model <- lm(hourswd ~ morekids, data = data_married)
+
+# Summary of the OLS
+summary(ols_model)
+```
+# 1(e):
+# The OLS estimate of the effect of fertility (morekids) on male hours worked (hourswd) is -0.028 with a standard error of 0.072, and is not statistically significant (p = 0.697).
+
+# Compared to the 2SLS estimates (0.108 and 0.226), the OLS estimate is smaller in magnitude and has a much smaller standard error, suggesting more precision. However, because morekids is likely endogenous (correlated with unobserved determinants of male labor supply), the OLS estimate may be biased. In contrast, 2SLS provides a consistent estimate under the assumption of valid instruments. Therefore, I would rely on the 2SLS estimates for inference even though they are less precise.
+
+# 2(a)
+```{r}
+# 1. Calculate the median age of women (full data)
+median_age_women <- median(data$agem, na.rm = TRUE)
+cat("Median age of women:", median_age_women, "\n")
+
+# 2. Create two groups: below and above median age
+below_median <- data %>% filter(agem < median_age_women)
+above_median <- data %>% filter(agem >= median_age_women)
+
+# 3. Calculate share with more than 2 children (morekids == 1)
+share_morekids_below <- mean(below_median$morekids, na.rm = TRUE)
+share_morekids_above <- mean(above_median$morekids, na.rm = TRUE)
+
+# Print results
+cat("Share of women with more than 2 kids (below median age):", share_morekids_below, "\n")
+cat("Share of women with more than 2 kids (above median age):", share_morekids_above, "\n")
+```
+# 2(a)
+# The median age of women in the sample is 31 years. Among women below the median age, 36.1% have more than two children. Among women above or equal to the median age, 44.1% have more than two children.
+
+# 2(b)
+```{r}
+# OLS regression for women below median age
+ols_below_median <- lm(weeksm ~ morekids + agem + agefstm + blackm + hispm + othracem, data = below_median)
+
+# Summary of the OLS
+summary(ols_below_median)
+```
+# Using the sample of women below the median age, the OLS estimate of the effect of having more than two children on weeks worked is -8.74 (SE = 0.145), and it is statistically significant (p < 0.001). We control for current age, age at first birth, and race (black, Hispanic, other) to account for observable characteristics that influence labor supply and fertility. These controls help mitigate omitted variable bias but are not sufficient to fully eliminate endogeneity concerns, as unobserved factors (like preferences for work or family) could still bias the estimates.
+
+# 2(c)
+```{r}
+# 2SLS regression for women below median age, using samesex as instrument
+iv_model_2c <- ivreg(weeksm ~ morekids + agem + agefstm + blackm + hispm + othracem | 
+                     samesex + agem + agefstm + blackm + hispm + othracem, 
+                     data = below_median)
+
+# Summary of the 2SLS
+summary(iv_model_2c)
+
+```
+#  2(c): Using 2SLS, the estimated effect of having more than two children on weeks worked is -3.49 (SE = 2.38), and it is not statistically significant (p = 0.142). Compared to the OLS estimate of -8.74 (SE = 0.145) from 2(b), the 2SLS estimate is smaller in magnitude (closer to zero) and less precise (larger standard error). This difference highlights the potential bias in the OLS estimates due to endogeneity. While OLS suggests a large negative effect of fertility on mothers' labor supply, the 2SLS estimate — although less precise — suggests a smaller negative effect when accounting for endogeneity using an instrument. Thus, 2SLS is more reliable for causal inference, despite its larger standard error.
+
+# 2(d):
+#The sample restriction to women below the median age may be problematic for the 2SLS approach because it changes the population under study. The strength of the instrument (samesex) and its exogeneity may differ among younger women compared to the full sample. Specifically, restricting the sample could weaken the first stage relationship and introduce selection bias if younger women have systematically different unobserved characteristics that affect both fertility and labor supply, thus potentially violating the exclusion restriction needed for valid 2SLS estimation.
+
+# 3(a):
+```{r}
+# Employment rates (worked for pay = 1)
+male_employment_rate <- mean(data$workedd, na.rm = TRUE)
+female_employment_rate <- mean(data$workedm, na.rm = TRUE)
+
+# Part-time definition: let's consider part-time if hours worked per week < 35
+male_part_time_share <- mean(data$hourswd < 35, na.rm = TRUE)
+female_part_time_share <- mean(data$hourswm < 35, na.rm = TRUE)
+
+# Print results
+cat("Male employment rate:", round(male_employment_rate * 100, 1), "%\n")
+cat("Female employment rate:", round(female_employment_rate * 100, 1), "%\n")
+cat("Male part-time share:", round(male_part_time_share * 100, 1), "%\n")
+cat("Female part-time share:", round(female_part_time_share * 100, 1), "%\n")
+```
+# 3(a):
+#In the Angrist and Evans (1980) data, the male employment rate is approximately 97.8%, and the female employment rate is approximately 56.6%. Part-time work is relatively rare among men (6%) but very common among women (63.9%). Compared to Switzerland today, where female labor force participation is slightly higher (around 60%) and part-time work is also high among women (60%), the patterns are somewhat similar. Male labor force participation in Switzerland (around 70%) is lower than in the U.S. sample, and part-time work is more common (around 20%) than in the U.S. data (6%). Given these differences, I would expect the effect of fertility on male labor supply in Switzerland today to be even smaller than in Angrist and Evans (1998). Male employment is already relatively lower and part-time more accepted; therefore, having another child might have little or no measurable impact on male labor supply. In contrast, effects on female labor supply might remain substantial due to high part-time work among women.
+
+# 3(b):
+# To estimate the effect of fertility on labor supply in Switzerland today using 2SLS, we would first need a valid instrument for fertility. One option would be to use the sex composition of the first two children (e.g., having two children of the same sex) as an instrument, as it predicts the likelihood of having a third child but should not directly affect labor supply decisions. In the first stage, we would regress fertility on the instrument (e.g., same-sex indicator), controlling for relevant covariates such as age, education, marital status, and region. In the second stage, we would regress labor supply outcomes (e.g., employment status, hours worked, part-time work) on the predicted fertility. It would be crucial to ensure the instrument is both relevant and exogenous given the cultural and policy context in Switzerland today.
+
+# 3 (c):
+# Question 3(c):
+#If using recent data from Switzerland, I would modify the sample restrictions because demographic patterns have changed substantially compared to the U.S. sample from Angrist and Evans (1998). First, I would expand the age range to include women up to 40 or 45 years old, since the average age at first birth is now around 31. Second, I would relax the requirement that women have at least two children, as Switzerland today has a lower fertility rate (1.4 children per woman), and many women have only one child. I would also carefully consider the timing and age at first birth when defining the sample, ensuring that comparisons are meaningful and representative of current Swiss family structures. Overall, the sample restrictions should be adapted to reflect contemporary fertility patterns while maintaining consistency for valid causal inference.
+
+# 4(a):
+# To test for the exogeneity of the instruments, I would perform an overidentification test, such as the Hansen J-test or the Sargan test. This test exploits the fact that with more instruments than endogenous regressors, it is possible to test whether the instruments are jointly uncorrelated with the structural error term. The null hypothesis is that the instruments are valid (exogenous), and rejection of the null would suggest that at least one instrument is invalid.
+
+# 4(b):
+#The overidentification test is informative under the assumptions that the model is correctly specified, the instruments are relevant (strongly correlated with the endogenous variable), and that at least one instrument is valid. If these assumptions are violated — for instance, if instruments are weak — then the overidentification test may not reliably detect problems with instrument validity.
+
+# 6(a):
+# Meyersson (2014) uses 1990 data to verify that municipalities where the Islamic party barely won and barely lost were comparable before treatment. Checking pre-treatment outcomes supports the RD identification strategy by confirming that treatment assignment near the cutoff is as good as random.
+
+# 6(b):
+# The optimal bandwidth is smaller for women because the outcome (female education) exhibits more local variation around the cutoff. A smaller bandwidth improves the accuracy of the local linear approximation in the presence of such variation.
+
+# 6(c):
+#The positive RD estimate for female secular education, despite a negative raw correlation, is explained by the mechanism that Islamic mayors relaxed barriers (like headscarf bans) to education. The author tests this by subgroup analyses, showing stronger positive effects among poor and religious municipalities, and finds that secular high school attendance increased.
+
+
