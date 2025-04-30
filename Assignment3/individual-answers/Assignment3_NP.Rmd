@@ -40,8 +40,6 @@ glimpse(data)
 Hmisc::describe(data)
 ```
 
-
-
 ## Question 1 - Estimating Effect of Fertility on Male Labour Supply - OLS
 ### (a)
 ```{r}
@@ -68,7 +66,7 @@ ols.1b <- lm(d1b ~ z1b)
 summ(ols.1b, robust = "HC1")
 
 ols.2b <- ivreg(y1b ~ d1b  | z1b)
-summary(ols.2, vcov = sandwich, diagnostics = TRUE)
+summary(ols.2b, vcov = sandwich, diagnostics = TRUE)
 ```
 Among compilers (i.e. those who have a third kid if the first two are the same sex AND do not have a third kid if the first are a different sex), it seems having more than two kids has a small positive but insignificant effect on the number of hours worked for the fathers.
 
@@ -89,6 +87,7 @@ summary(ols.2c, vcov = sandwich, diagnostics = TRUE)
 Among compliers, the impact of having more than two kids on hours worked is positive but still small and insignificant.
 
 ### (d)
+In (b) only a single instrument (having two kids of the same sex) is used, and (c) uses two instruments (having two boys or having two kids) jointly. This allows for the effect of having two kids on having a third kid to be different depending on the sex of the kid. The estimated impact in (c) is greater than that of (b) (0.2260 vs. 0.1081) but still insignificant, indicating neither reveals an effect of having a third kid on hours worked by men. The estimates from the first stage of (b) and (c) indicate that there are similar percentage of compliers when using the two instruments (6% vs. 5-8% dependending on gender composition).
 
 
 ### (e)
@@ -106,8 +105,8 @@ Using only OLS, we now see a negative (but still small and insignificant) effect
 ### (a)
 ```{r}
 median_age_m <- median(data$agem) 
-data_om <- data %>% filter(agem > median_age_m) # households where woman is over median age 
-data_um <- data %>% filter(agem <= median_age_m) # households where woman is under median age 
+data_om <- data %>% filter(agem >= median_age_m) # households where woman is over median age 
+data_um <- data %>% filter(agem < median_age_m) # households where woman is under median age 
 
 data_om$morekids %>% mean() %>% round(3)
 data_um$morekids %>% mean() %>% round(3)
@@ -124,14 +123,15 @@ summ(ols.2b, robust = "HC1")
 
 ```
 
-I do not think these variables are enough to alleviate potential endogeneity concerns. For example, things like religion and socioeconomic status may be correlated with having more kids and also have a causal relationship with the number of hours worked per work by mothers. If this were to be the case, the assumption of unfoundedness would be violated and our causal effect unidentifiable. 
+One would control for these variables if they influence both fertility and hours worked by the mothers. I do not think these variables are enough to alleviate potential endogeneity concerns. For example, things like religion and socioeconomic status may be correlated with having more kids and also have a causal relationship with the number of hours worked per week by mothers. If this were to be the case, the assumption of unfoundedness would be violated and our causal effect unidentifiable. 
 
 
 ### (c)
 ```{r}
 #lm(morekids ~ samesex, data = data_um)
+# "agem", "agefstm", "blackm", "hispm", "othracem"
 
-tsls_2c <- ivreg(weeksm ~ morekids | samesex, data = data_um)
+tsls_2c <- ivreg(weeksm ~ morekids + agem + agefstm + blackm + hispm + othracem | samesex + agem + agefstm + blackm + hispm + othracem, data = data_um)
 summary(tsls_2c, vcov = sandwich, diagnostics = TRUE)
 
 ```
@@ -168,9 +168,9 @@ It is apparent that more mothers in Switzerland today participate in the labor m
 ### (b)
 To estimate the effect of fertility in labor supply in Switzerland today, we'd likely have to change the definition of our exposure. This is due to the fact that many people are having less than two children. One way to do this is to look at the impact of having more than one kid, instead of having more than two kids. Then, the first step would regress a dummy that indicates whether the household has more than one kid against the instrument. Then, the estimates of this exposure variable will be used in a model with labor supply outcomes as the response. If it is thought that sex itself influences whether or not someone will have another kid, then sex could be used as the instrument. 
 
-```{r}
+-> other answer
+To estimate the effect of fertility in labor supply in Switzerland today, we'd likely have to change the definition of our exposure. This is due to the fact that many people are having less than two children. One way to do this is to look at the impact of having one kid, instead of having no kids. A potential instrumental variable for this exposure is fertility status, which takes one if the household is fertile and zero otherwise. Then, the first step would regress a dummy that indicates whether the household has at least one kid against the instrument. Then, the estimates of this exposure variable will be used in a model with labor supply outcomes as the response.
 
-```
 
 ### (c)
 Restricting ages to be between 21 and 35 might be problematic as women are now have children later and later (many are likely having additional children after the age of 35). Additionally, given the much lower fertility rate of Switzerland today compared to US back then, it perhaps be problematic to limit the analyses to those having more than two children. 
@@ -187,10 +187,12 @@ Sargan test - assumes homoskedastic errors, assumes at least one instrument is v
 
 ## Question 5
 ### (a) 
-Data from 1990 is included to test the "local continuity" assumption that would require the potential outcomes to be continuous across all values of the win margin. If we would see a jump at 0 in the 1990 data, this would violate this assumption and indicate that those municipalities who had a small victory margin in 1994 differ systematically from those who barely lost. 
+Data from 1990 is included to test the "local-continuity" assumption that would require the potential outcomes to be continuous across all values of the win margin. If we would see a jump at 0 in the 1990 data, this would violate this assumption and indicate that those municipalities who had a small victory margin in 1994 differ systematically from those who barely lost. 
 
 ### (b)
-The narrower bandwidth in women is due to a more non-linear relationship with the forcing variable compared to men. 
-
+The narrower bandwidth in women is due to a more non-linear relationship with the forcing variable compared to men. This leads to more variation around the cutoff. A smaller bandwidth improves the accuracy of the local linear approximation in the presence of such variation. 
 
 ### (c)
+The positive RD estimate for female secular education, despite a negative raw correlation, is explained by the mechanism that Islamic mayors relaxed barriers (like headscarf bans) to education. The author tests this by subgroup analyses, showing stronger positive effects among poor and religious municipalities, and finds that secular high school attendance increased.
+
+
