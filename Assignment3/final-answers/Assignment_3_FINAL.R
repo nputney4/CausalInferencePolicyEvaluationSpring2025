@@ -6,7 +6,6 @@
 #############
 ## Setup   ##
 #############
-
 # Empty working space
 rm(list=ls())
 
@@ -18,10 +17,12 @@ packages_vector <- c( "haven", "dplyr",  "sandwich",  "jtools", "fBasics",
                       "causalweight") # for semiparametric LATE
 lapply(packages_vector, require, character.only = TRUE)
 
+# Read in the data
+load("C:/Users/putne/OneDrive/Documents/CausalInferencePolicyEvaluationSpring2025/Assignment3/instructions-and-setup/AngristEvans1980_reduced.RData")
+
 ##################
 ## Question 1   ##
 ##################
-
 ### (a)
 # Only include rows which describe a married couple
 data_m <- data %>% filter(msample == 1)
@@ -62,6 +63,8 @@ y1e <- data_m$hourswd # mens hours worked per week
 
 ols.1e <- lm(y1e ~ d1e)
 summ(ols.1e, robust = "HC1")
+
+# For interpretation, see PDF
 
 ##################
 ## Question 2   ##
